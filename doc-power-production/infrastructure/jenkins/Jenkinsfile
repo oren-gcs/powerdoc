@@ -1,0 +1,31 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = 'docker.io'
+        IMAGE_PREFIX = 'docpower'
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                sh 'docker-compose build'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh 'pytest tests/ -v'
+            }
+        }
+        
+        stage('Deploy') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh 'bash scripts/kubernetes/deploy.sh prod'
+            }
+        }
+    }
+}

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doc-power"
+version = "1.0.0"
+description = "Enterprise Document Management System"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Doc-Power Team"}]
+keywords = ["document", "management", "ocr", "microservices", "enterprise"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/doc-power"
+Documentation = "https://docs.doc-power.io"
+Repository = "https://github.com/your-org/doc-power.git"
+Issues = "https://github.com/your-org/doc-power/issues"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''/(\.git|\.hg|\.mypy_cache|\.tox|\.venv|_build|buck-out|build|dist)/'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+known_first_party = ["doc_power", "shared"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "--verbose -ra --cov=microservices --cov=shared --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["microservices", "shared"]
+omit = ["*/tests/*", "*/__main__.py"]
