@@ -10,6 +10,10 @@ htmlcov/
 node_modules/
 dist/
 .vite/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
 *.egg-info/
 .venv/
 venv/

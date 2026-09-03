@@ -1,4 +1,4 @@
-.PHONY: demo test api web install
+.PHONY: demo test api web install e2e e2e-install e2e-cloud compose
 
 install:
 	python3 -m pip install -r apps/api/requirements.txt
@@ -17,6 +17,15 @@ demo: install
 
 test:
 	cd apps/api && PYTHONPATH=. python3 -m pytest -q tests
+
+e2e-install:
+	cd apps/web && npm install && npx playwright install --with-deps chromium
+
+e2e:
+	cd apps/web && npx playwright test
+
+e2e-cloud:
+	cd apps/web && npx playwright test --config=playwright.cloud.config.ts
 
 compose:
 	docker compose up --build

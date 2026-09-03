@@ -1,0 +1,60 @@
+name: Playwright
+
+on:
+  push:
+    branches: ["main", "cursor/**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Cloud desk URL (leave empty to boot local API + Vite on the runner)"
+        required: false
+        default: ""
+
+jobs:
+  e2e:
+    name: ${{ inputs.base_url && 'cloud' || 'local' }} Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install API
+        if: ${{ !inputs.base_url }}
+        working-directory: .
+        run: python3 -m pip install -r apps/api/requirements.txt
+      - name: Install web + Playwright Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run Playwright (local stack)
+        if: ${{ !inputs.base_url }}
+        run: npx playwright test
+        env:
+          CI: true
+      - name: Run Playwright (cloud desk)
+        if: ${{ inputs.base_url != '' }}
+        run: npx playwright test --config=playwright.cloud.config.ts
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: ${{ inputs.base_url }}
+          PLAYWRIGHT_DEMO_EMAIL: ${{ secrets.PLAYWRIGHT_DEMO_EMAIL }}
+          PLAYWRIGHT_DEMO_PASSWORD: ${{ secrets.PLAYWRIGHT_DEMO_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7

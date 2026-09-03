@@ -37,9 +37,43 @@ UI on `:5173`, API on `:8000`, Postgres on `:5432`.
 
 ## Tests
 
+API (pytest):
+
 ```bash
 cd apps/api && PYTHONPATH=. python3 -m pytest -q tests
 ```
+
+### Playwright — local
+
+Install the web app plus a local Chromium for Playwright (one-time on a laptop):
+
+```bash
+make e2e-install
+# same as:
+# cd apps/web && npm install && npx playwright install --with-deps chromium
+```
+
+Run against API + Vite on this machine (reuses servers if they are already up):
+
+```bash
+make e2e
+# or: cd apps/web && npm run test:e2e
+```
+
+Headed (see the browser): `cd apps/web && npm run test:e2e:headed`
+
+### Playwright — cloud
+
+Against a **deployed** desk (AWS / GCP / k8s). Do not start local servers:
+
+```bash
+export PLAYWRIGHT_BASE_URL=https://your-docflow.example
+export PLAYWRIGHT_DEMO_EMAIL=oren@gcs-tech.org
+export PLAYWRIGHT_DEMO_PASSWORD='DocFlow!2026'
+cd apps/web && npm run test:e2e:cloud
+```
+
+On GitHub Actions: every push/PR boots the local stack on `ubuntu-latest`. To hit a cloud URL, run the **Playwright** workflow with `workflow_dispatch` and the `base_url` input (optional secrets `PLAYWRIGHT_DEMO_EMAIL` / `PLAYWRIGHT_DEMO_PASSWORD`).
 
 ## MCP
 
