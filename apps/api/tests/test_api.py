@@ -224,7 +224,7 @@ STUDENT_PROMPT = (
 
 
 def test_student_day_summary_compose_replies(client):
-    from app.engine.formgen import compose_from_prompt
+    from app.engine.formgen import compose_from_prompt, relevant_chunks
 
     built = compose_from_prompt(STUDENT_PROMPT, "en", use_llm=False)
     assert built["reply"]
@@ -232,6 +232,8 @@ def test_student_day_summary_compose_replies(client):
     assert built["knowledge"]["applied"] is False
     assert built["knowledge"]["href"] == "/app/connectors"
     assert built["knowledge"]["also"] == "/app/manage"
+    assert relevant_chunks(STUDENT_PROMPT, [{"title": "PBX manual", "text": "email date class of service user manual"}]) == []
+    assert relevant_chunks(STUDENT_PROMPT, [{"title": "Roster", "text": "student roster for today's lesson"}])
     types = {f["type"] for f in built["fields"]}
     assert "date" in types
     assert "email" in types

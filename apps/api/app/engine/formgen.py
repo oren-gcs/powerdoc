@@ -150,6 +150,19 @@ def guess_name(prompt: str, language: str) -> str:
     return " ".join(words).title()[:80] or "Untitled form"
 
 
+def relevant_chunks(prompt: str, chunks: list[dict]) -> list[dict]:
+    """Keep RAG hits that actually belong to the form's domain."""
+    c = _norm(prompt)
+    hay = lambda ch: f"{ch.get('title', '')} {ch.get('text', '')}".lower()
+    if any(w in c for w in ("student", "students", "lesson", "roster", "attendance")):
+        need = ("student", "students", "roster", "lesson", "attendance", "classroom", "teacher", "syllabus")
+        return [ch for ch in chunks if any(w in hay(ch) for w in need)]
+    if "invoice" in c or "vendor" in c:
+        need = ("invoice", "vendor", "amount due", "bill to")
+        return [ch for ch in chunks if any(w in hay(ch) for w in need)]
+    return chunks
+
+
 def knowledge_status(chunks: list[dict], connector_count: int, folder_count: int) -> dict:
     if chunks:
         titles = ", ".join(c.get("title") or c.get("source") or "source" for c in chunks[:3])

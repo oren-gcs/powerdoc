@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user, require
-from app.engine.formgen import compose_from_prompt, fields_from_chunks
+from app.engine.formgen import compose_from_prompt, fields_from_chunks, relevant_chunks
 from app.engine.orchestrator import match_automation, process_document
 from app.engine.rag import retrieve, upsert_chunk
 from app.llm import ollama_status
@@ -115,6 +115,7 @@ def compose(body: ComposeIn, user: User = Depends(require("operator")), db: Sess
     extra: list[str] = []
     if body.use_rag:
         chunks = retrieve(db, user.tenant_id, body.prompt, min_score=3, fallback_fields=False)
+        chunks = relevant_chunks(body.prompt, chunks)
         extra = fields_from_chunks(chunks)
     connectors = db.query(Connector).filter(Connector.tenant_id == user.tenant_id).count()
     folders = db.query(Folder).filter(Folder.tenant_id == user.tenant_id).count()
