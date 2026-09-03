@@ -292,9 +292,12 @@ def compose_from_prompt(
 
 def fields_from_chunks(chunks: list[dict]) -> list[str]:
     names: list[str] = []
+    skip = {"http", "https", "ftp", "www", "mailto"}
     blob = " ".join(c.get("text", "") for c in chunks)
     for m in re.findall(r"\b([A-Za-z][A-Za-z_ ]{2,40}):", blob):
         n = m.strip()
+        if n.lower() in skip or len(n.split()) > 4:
+            continue
         if n not in names:
             names.append(n)
     for key in ("invoice_number", "amount", "vendor", "date", "governing law"):

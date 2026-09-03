@@ -33,7 +33,13 @@ def upsert_chunk(db: Session, tenant_id: int, source_type: str, source_id: str, 
 
 
 def retrieve(db: Session, tenant_id: int, query: str, limit: int = 8, *, min_score: int = 1, fallback_fields: bool = True) -> list[dict]:
-    tokens = [t.lower() for t in query.replace(",", " ").split() if len(t) > 2]
+    stop = {
+        "the", "and", "for", "with", "was", "did", "which", "user", "from", "this", "that",
+        "today", "were", "have", "been", "your", "their", "them", "then", "than", "into",
+        "about", "after", "before", "over", "under", "also", "just", "only", "here", "there",
+        "http", "https", "www",
+    }
+    tokens = [t.lower().strip(".,;:") for t in query.replace(",", " ").split() if len(t) > 3 and t.lower().strip(".,;:") not in stop]
     rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.tenant_id == tenant_id).all()
     scored = []
     for r in rows:

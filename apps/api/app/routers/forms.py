@@ -114,7 +114,7 @@ def compose(body: ComposeIn, user: User = Depends(require("operator")), db: Sess
     chunks = []
     extra: list[str] = []
     if body.use_rag:
-        chunks = retrieve(db, user.tenant_id, body.prompt, min_score=2, fallback_fields=False)
+        chunks = retrieve(db, user.tenant_id, body.prompt, min_score=3, fallback_fields=False)
         extra = fields_from_chunks(chunks)
     connectors = db.query(Connector).filter(Connector.tenant_id == user.tenant_id).count()
     folders = db.query(Folder).filter(Folder.tenant_id == user.tenant_id).count()
