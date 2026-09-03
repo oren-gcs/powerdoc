@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://docflow:docflow@postgres:5432/docflow
+      STORAGE_PATH: /data/storage
+      SKILLS_PATH: /skills
+      SEED_DEMO: "true"
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    volumes:
+      - docflow_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: docflow
+      POSTGRES_PASSWORD: docflow
+      POSTGRES_DB: docflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg:
+  docflow_data:
