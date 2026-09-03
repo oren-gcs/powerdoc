@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import Date, cast, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -34,14 +34,13 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
         .all()
     )
     since = datetime.utcnow() - timedelta(days=14)
-    day = cast(Activity.created_at, Date)
-    daily = (
-        scoped(Activity)
-        .filter(Activity.created_at >= since)
-        .with_entities(day, func.count(Activity.id))
-        .group_by(day)
-        .all()
-    )
+    acts = scoped(Activity).filter(Activity.created_at >= since).all()
+    bucket: dict[str, int] = {}
+    for row in acts:
+        if row.created_at:
+            key = row.created_at.strftime("%Y-%m-%d")
+            bucket[key] = bucket.get(key, 0) + 1
+    daily = sorted(bucket.items())
     digest = generate(
         "analytics",
         f"Docs={docs} ready={ready} failed={failed} runs={runs} classes={dict(classes)}",
@@ -54,7 +53,7 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "completed_runs": completed_runs,
         "success_rate": round((completed_runs / runs) * 100, 1) if runs else 100.0,
         "by_class": [{"label": c or "unclassified", "count": n} for c, n in classes],
-        "activity_daily": [{"day": str(d), "count": n} for d, n in daily],
+        "activity_daily": [{"day": d, "count": n} for d, n in daily],
         "digest": digest["text"],
     }
 

@@ -113,3 +113,12 @@ def test_block_and_suspend_endpoints_exist(client):
     uid = users.json()[0]["id"]
     blocked = client.post(f"/api/v1/admin/users/{uid}/block", headers=headers)
     assert blocked.status_code == 200
+
+
+def test_analytics_summary_ok(client):
+    headers = auth_headers(client)
+    r = client.get("/api/v1/analytics/summary", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "documents" in body
+    assert "success_rate" in body

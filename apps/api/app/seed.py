@@ -42,9 +42,9 @@ def seed_if_needed(db) -> None:
     db.flush()
     users = [
         User(email="oren@gcs-tech.org", full_name="Oren Gilboa", hashed_password=hash_password(DEMO_PASSWORD), role="owner", tenant_id=tenant.id),
-        User(email="admin@docflow.local", full_name="Platform Admin", hashed_password=hash_password(DEMO_PASSWORD), role="platform_admin", tenant_id=tenant.id),
-        User(email="operator@docflow.local", full_name="Maya Operator", hashed_password=hash_password(DEMO_PASSWORD), role="operator", tenant_id=tenant.id),
-        User(email="viewer@docflow.local", full_name="Lee Viewer", hashed_password=hash_password(DEMO_PASSWORD), role="viewer", tenant_id=tenant.id),
+        User(email="admin@docflow.example", full_name="Platform Admin", hashed_password=hash_password(DEMO_PASSWORD), role="platform_admin", tenant_id=tenant.id),
+        User(email="operator@docflow.example", full_name="Maya Operator", hashed_password=hash_password(DEMO_PASSWORD), role="operator", tenant_id=tenant.id),
+        User(email="viewer@docflow.example", full_name="Lee Viewer", hashed_password=hash_password(DEMO_PASSWORD), role="viewer", tenant_id=tenant.id),
     ]
     for u in users:
         db.add(u)

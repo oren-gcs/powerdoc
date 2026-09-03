@@ -24,7 +24,7 @@ class LoginIn(BaseModel):
 
 class UserOut(BaseModel):
     id: int
-    email: EmailStr
+    email: str
     full_name: str
     role: str
     tenant_id: int
