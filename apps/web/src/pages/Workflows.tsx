@@ -3,14 +3,37 @@ import { WfAPI } from "../api";
 
 const TYPES = ["extract_text", "classify", "extract_fields", "condition", "tag", "summarize", "notify", "agent", "webhook"];
 
+function FlowBoard({ nodes }: { nodes: any[] }) {
+  const items = nodes || [];
+  return (
+    <div className="n8n-board" data-demo="n8n-board">
+      {items.map((n, i) => (
+        <div key={n.key || i} className="n8n-col">
+          <div className={`n8n-node type-${n.type}`}>
+            <div className="n8n-port" />
+            <div className="eyebrow">{n.n8n?.replace("n8n-nodes-base.", "") || n.type}</div>
+            <strong>{n.label}</strong>
+          </div>
+          {i < items.length - 1 && <div className="n8n-wire" aria-hidden />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Workflows() {
   const [rows, setRows] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
+  const [sel, setSel] = useState<any>(null);
+  const [n8n, setN8n] = useState<any>(null);
   const [name, setName] = useState("Custom intake");
   const [steps, setSteps] = useState("extract_text,classify,extract_fields,notify");
 
   const load = () => {
-    WfAPI.list().then(setRows);
+    WfAPI.list().then((w) => {
+      setRows(w);
+      setSel((cur: any) => cur || w[0] || null);
+    });
     WfAPI.runs().then(setRuns);
   };
   useEffect(() => {
@@ -29,31 +52,52 @@ export default function Workflows() {
     load();
   };
 
+  const openN8n = async (wf: any) => {
+    setSel(wf);
+    const graph = await WfAPI.n8n(wf.id);
+    setN8n(graph);
+  };
+
   return (
     <>
       <div className="topbar">
         <div>
-          <div className="eyebrow">Executable engine</div>
+          <div className="eyebrow">n8n-compatible · executable here</div>
           <h1 className="mark" style={{ fontSize: 32, margin: 0 }}>
-            Flows
+            n8n flows
           </h1>
         </div>
+        {sel && (
+          <button className="btn" data-demo="n8n-json" onClick={() => openN8n(sel)}>
+            Open n8n JSON
+          </button>
+        )}
       </div>
-      <div className="split">
+      {sel && <FlowBoard nodes={sel.canvas || sel.steps} />}
+      {n8n && (
+        <pre className="ocr" data-demo="n8n-json-view">
+          {JSON.stringify({ name: n8n.name, nodes: (n8n.nodes || []).map((n: any) => n.name), webhook: n8n.webhook }, null, 2)}
+        </pre>
+      )}
+      <div className="split" style={{ marginTop: 16 }}>
         <div className="card">
           {rows.map((w) => (
-            <div key={w.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
-              <strong>{w.name}</strong>
-              <div className="muted">{w.description}</div>
-              <div className="flow" style={{ marginTop: 8 }}>
-                {(w.steps || []).map((s: any) => (
-                  <div className="step-chip" key={s.key}>
-                    <small>{s.type}</small>
-                    {s.key}
-                  </div>
-                ))}
+            <button
+              type="button"
+              key={w.id}
+              className={`flow-pick ${sel?.id === w.id ? "on" : ""}`}
+              data-demo={`flow-${w.id}`}
+              onClick={() => {
+                setSel(w);
+                setN8n(null);
+              }}
+            >
+              <div>
+                <strong>{w.name}</strong>
+                <span className="pill">n8n</span>
               </div>
-            </div>
+              <div className="muted">{w.description}</div>
+            </button>
           ))}
           <form onSubmit={create} style={{ marginTop: 16 }}>
             <div className="field">
@@ -86,15 +130,6 @@ export default function Workflows() {
               ))}
             </tbody>
           </table>
-          {runs[0]?.steps && (
-            <div style={{ marginTop: 12 }}>
-              {runs[0].steps.map((s: any) => (
-                <div key={s.key} className="muted">
-                  {s.key}: {s.status}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </>

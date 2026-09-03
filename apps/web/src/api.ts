@@ -68,6 +68,7 @@ export const WfAPI = {
   execute: (id: number, documentId: number) =>
     api(`/api/v1/workflows/${id}/execute?document_id=${documentId}`, { method: "POST" }),
   runs: () => api("/api/v1/workflows/runs/recent"),
+  n8n: (id: number) => api(`/api/v1/workflows/${id}/n8n`),
 };
 
 export const AutoAPI = {

@@ -90,6 +90,7 @@ export default function FormBuilder() {
           </button>
           <button
             className="btn primary"
+            data-demo="publish"
             onClick={async () => {
               try {
                 const saved = await persist();
@@ -107,7 +108,7 @@ export default function FormBuilder() {
       </div>
       <div className="chatbar">
         <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Tell the desk what this form is for…" />
-        <button className="btn primary" onClick={compose}>
+        <button className="btn primary" data-demo="compose" onClick={compose}>
           Draft with chat
         </button>
       </div>

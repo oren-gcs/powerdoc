@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user, require
+from app.engine.n8n import canvas_nodes, to_n8n
 from app.engine.workflow import execute_workflow
 from app.models import Document, User, Workflow, WorkflowRun, WorkflowStepRun
 from app.schemas import WorkflowIn
@@ -37,6 +38,16 @@ def create_workflow(body: WorkflowIn, user: User = Depends(require("admin")), db
     db.commit()
     db.refresh(wf)
     return _out(wf)
+
+
+@router.get("/{workflow_id}/n8n")
+def n8n_export(workflow_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    wf = _scope(db, user).filter(Workflow.id == workflow_id).first()
+    if not wf:
+        raise HTTPException(404, "Workflow not found")
+    graph = to_n8n(wf.name, (wf.definition or {}).get("steps") or [], wf.trigger)
+    graph["webhook"] = f"/api/v1/workflows/{wf.id}/execute"
+    return graph
 
 
 @router.get("/{workflow_id}")
@@ -100,6 +111,8 @@ def _out(wf: Workflow) -> dict:
         "trigger": wf.trigger,
         "is_active": wf.is_active,
         "steps": (wf.definition or {}).get("steps") or [],
+        "canvas": canvas_nodes((wf.definition or {}).get("steps") or [], wf.trigger),
+        "n8n_url": f"/api/v1/workflows/{wf.id}/n8n",
         "created_at": wf.created_at.isoformat() if wf.created_at else None,
     }
 

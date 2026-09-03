@@ -33,6 +33,13 @@ class ConnectorIn(BaseModel):
     config: dict = {}
 
 
+def _files_for(c: Connector) -> list[str]:
+    stored = (c.config or {}).get("files")
+    if stored:
+        return list(stored)
+    return [title for title, _ in SANDBOX.get(c.kind, [])]
+
+
 @router.get("")
 def list_connectors(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.query(Connector).filter(Connector.tenant_id == user.tenant_id).all()
@@ -44,6 +51,7 @@ def list_connectors(user: User = Depends(current_user), db: Session = Depends(ge
             "status": c.status,
             "file_count": c.file_count,
             "last_sync_at": c.last_sync_at.isoformat() if c.last_sync_at else None,
+            "files": _files_for(c),
         }
         for c in rows
     ]
@@ -70,10 +78,15 @@ def sync(connector_id: int, user: User = Depends(require("operator")), db: Sessi
         ocrs = db.query(OCRResult).filter(OCRResult.tenant_id == user.tenant_id).all()
         files = [(f"document:{o.document_id}", o.text or "") for o in ocrs] or files
     n = 0
+    titles = []
     for title, text in files:
         upsert_chunk(db, user.tenant_id, c.kind, f"{c.id}:{n}", title, text)
+        titles.append(title)
         n += 1
+    cfg = dict(c.config or {})
+    cfg["files"] = titles
+    c.config = cfg
     c.file_count = n
     c.last_sync_at = datetime.utcnow()
     db.commit()
-    return {"synced": n, "kind": c.kind}
+    return {"synced": n, "kind": c.kind, "files": titles}

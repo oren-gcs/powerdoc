@@ -181,3 +181,36 @@ def test_form_compose_publish_and_public_submit(client):
     rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
     assert rows.status_code == 200
     assert rows.json()[0]["submitter_email"] == "lee@example.com"
+
+
+def test_n8n_export_and_connectors(client):
+    headers = auth_headers(client)
+    wf = client.post(
+        "/api/v1/workflows",
+        headers=headers,
+        json={
+            "name": "n8n Invoice",
+            "description": "export",
+            "trigger": "on_upload",
+            "steps": [
+                {"key": "ocr", "type": "extract_text", "config": {}},
+                {"key": "classify", "type": "classify", "config": {}},
+                {"key": "notify", "type": "notify", "config": {}},
+            ],
+        },
+    )
+    assert wf.status_code == 200, wf.text
+    listed = client.get("/api/v1/workflows", headers=headers)
+    assert listed.json()[0]["canvas"][0]["type"] == "webhook"
+    graph = client.get(f"/api/v1/workflows/{wf.json()['id']}/n8n", headers=headers)
+    assert graph.status_code == 200, graph.text
+    body = graph.json()
+    assert body["name"] == "n8n Invoice"
+    assert any(n["type"] == "n8n-nodes-base.webhook" for n in body["nodes"])
+    linked = client.post("/api/v1/connectors", headers=headers, json={"kind": "google_drive", "name": "Drive"})
+    assert linked.status_code == 200, linked.text
+    synced = client.post(f"/api/v1/connectors/{linked.json()['id']}/sync", headers=headers)
+    assert synced.status_code == 200
+    assert synced.json()["synced"] >= 1
+    rows = client.get("/api/v1/connectors", headers=headers)
+    assert rows.json()[0]["files"]
