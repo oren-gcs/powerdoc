@@ -133,6 +133,7 @@ def seed_if_needed(db) -> None:
             ModelBinding(agent_role="notification", model_name="heuristic", provider="heuristic"),
             ModelBinding(agent_role="analytics", model_name="heuristic", provider="heuristic"),
             ModelBinding(agent_role="orchestrator", model_name="heuristic", provider="heuristic"),
+            ModelBinding(agent_role="form_builder", model_name="heuristic", provider="heuristic"),
             FeatureFlag(key="pipeline", enabled=True, description="Document processing pipeline"),
             FeatureFlag(key="automations", enabled=True, description="Trigger matching"),
             FeatureFlag(key="llm_optional", enabled=True, description="Use Ollama/OpenAI when available"),

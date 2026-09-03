@@ -7,17 +7,20 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user, require
-from app.engine.formgen import compose_form, fields_from_chunks
+from app.engine.formgen import compose_from_prompt, fields_from_chunks
 from app.engine.orchestrator import match_automation, process_document
 from app.engine.rag import retrieve, upsert_chunk
+from app.llm import ollama_status
 from app.models import (
     Activity,
     Automation,
+    Connector,
     Document,
     Folder,
     Form,
     FormShare,
     FormSubmission,
+    ModelBinding,
     Notification,
     RecordRow,
     User,
@@ -108,13 +111,35 @@ def create_form(body: FormIn, user: User = Depends(require("operator")), db: Ses
 
 @router.post("/compose")
 def compose(body: ComposeIn, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
-    extra: list[str] = []
     chunks = []
+    extra: list[str] = []
     if body.use_rag:
-        chunks = retrieve(db, user.tenant_id, body.prompt)
+        chunks = retrieve(db, user.tenant_id, body.prompt, min_score=2, fallback_fields=False)
         extra = fields_from_chunks(chunks)
-    built = compose_form(body.prompt, body.language, extra)
-    return {**built, "context": chunks[:4]}
+    connectors = db.query(Connector).filter(Connector.tenant_id == user.tenant_id).count()
+    folders = db.query(Folder).filter(Folder.tenant_id == user.tenant_id).count()
+    binding = db.query(ModelBinding).filter(ModelBinding.agent_role == "form_builder", ModelBinding.provider == "ollama").first()
+    if not binding:
+        binding = db.query(ModelBinding).filter(ModelBinding.provider == "ollama").first()
+    model = binding.model_name if binding and binding.provider == "ollama" else None
+    built = compose_from_prompt(
+        body.prompt,
+        body.language,
+        chunks=chunks,
+        connector_count=connectors,
+        folder_count=folders,
+        use_llm=True,
+        model=model,
+    )
+    if extra:
+        for name in extra[:6]:
+            label = name.replace("_", " ").title()
+            if not any(f["label"].lower() == label.lower() for f in built["fields"]):
+                built["fields"].insert(-1, {"id": name[:8], "type": "text", "label": label, "required": False, "options": [], "help": "From knowledge", "placeholder": "", "auto": ""})
+    built["context"] = chunks[:4]
+    if not built.get("ollama"):
+        built["ollama"] = ollama_status()
+    return built
 
 
 @router.get("/{form_id}")

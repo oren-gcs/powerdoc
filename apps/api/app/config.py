@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     automations_path: str = str(ROOT / "automations")
     cors_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
     ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     smtp_host: str = ""

@@ -148,6 +148,7 @@ def test_form_compose_publish_and_public_submit(client):
     )
     assert drafted.status_code == 200, drafted.text
     fields = drafted.json()["fields"]
+    assert drafted.json()["reply"]
     assert any(f["type"] == "dropdown" for f in fields)
     created = client.post(
         "/api/v1/forms",
@@ -214,3 +215,65 @@ def test_n8n_export_and_connectors(client):
     assert synced.json()["synced"] >= 1
     rows = client.get("/api/v1/connectors", headers=headers)
     assert rows.json()[0]["files"]
+
+
+STUDENT_PROMPT = (
+    "day summery to students , date automatic , rate today class, signature mandatory, "
+    "email by user , did the student was in class, which topic was best explained"
+)
+
+
+def test_student_day_summary_compose_replies(client):
+    from app.engine.formgen import compose_from_prompt
+
+    built = compose_from_prompt(STUDENT_PROMPT, "en", use_llm=False)
+    assert built["reply"]
+    assert "I drafted" in built["reply"] or "understood" in built["reply"].lower()
+    assert built["knowledge"]["applied"] is False
+    assert built["knowledge"]["href"] == "/app/connectors"
+    assert built["knowledge"]["also"] == "/app/manage"
+    types = {f["type"] for f in built["fields"]}
+    assert "date" in types
+    assert "email" in types
+    assert "signature" in types
+    assert "yesno" in types
+    assert "textarea" in types
+    assert "radio" in types
+    date = next(f for f in built["fields"] if f["type"] == "date")
+    assert date["auto"] == "today"
+    assert date["required"] is True
+    sig = next(f for f in built["fields"] if f["type"] == "signature")
+    assert sig["required"] is True
+    assert any("in class" in f["label"].lower() for f in built["fields"] if f["type"] == "yesno")
+    assert any("topic" in f["label"].lower() for f in built["fields"] if f["type"] == "textarea")
+    assert any("rate" in f["label"].lower() for f in built["fields"] if f["type"] == "radio")
+
+    headers = auth_headers(client)
+    drafted = client.post(
+        "/api/v1/forms/compose",
+        headers=headers,
+        json={"prompt": STUDENT_PROMPT, "language": "en"},
+    )
+    assert drafted.status_code == 200, drafted.text
+    body = drafted.json()
+    assert body["reply"]
+    assert "Connectors" in body["reply"] or body["knowledge"]["href"] == "/app/connectors"
+    assert any(f["type"] == "signature" and f["required"] for f in body["fields"])
+    assert "up" in body["ollama"]
+    assert "models" in body["ollama"]
+
+
+def test_ollama_status_endpoint(client):
+    headers = auth_headers(client)
+    r = client.get("/api/v1/agent/ollama", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "up" in body
+    assert "url" in body
+    assert isinstance(body["models"], list)
+    status = client.get("/api/v1/agent/status", headers=headers)
+    assert status.status_code == 200
+    assert "ollama" in status.json()
+    health = client.get("/api/v1/admin/health", headers=headers)
+    assert health.status_code == 200
+    assert "ollama" in health.json()

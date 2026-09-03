@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require
+from app.llm import ollama_status
 from app.models import Document, FeatureFlag, ModelBinding, Tenant, User, WorkflowRun
 from app.schemas import UserOut
 from app.security import hash_password
@@ -148,4 +149,5 @@ def health(db: Session = Depends(get_db), _user: User = Depends(require("admin")
         "database": "ok",
         "users": db.query(User).count(),
         "documents": db.query(Document).count(),
+        "ollama": ollama_status(),
     }

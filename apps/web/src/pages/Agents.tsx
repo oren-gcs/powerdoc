@@ -28,7 +28,20 @@ export default function Agents() {
           </p>
           <div className="muted">{status?.skills} skills loaded</div>
         </div>
-        {(status?.bindings || []).slice(0, 2).map((b: any) => (
+        <div className="card" data-demo="agent-ollama">
+          <div className="eyebrow">Ollama</div>
+          <p className="n mark" style={{ fontSize: 28 }}>
+            {status?.ollama?.up ? "local" : "offline"}
+          </p>
+          <div className="muted">
+            {status?.ollama?.up
+              ? status.ollama.models?.length
+                ? status.ollama.models.join(", ")
+                : "Up — pull llama3.2"
+              : `Start ollama serve at ${status?.ollama?.url || "http://127.0.0.1:11434"}`}
+          </div>
+        </div>
+        {(status?.bindings || []).slice(0, 1).map((b: any) => (
           <div className="card" key={b.role}>
             <div className="eyebrow">{b.role}</div>
             <div className="mono">{b.model}</div>

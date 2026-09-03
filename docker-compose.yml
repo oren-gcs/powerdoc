@@ -13,6 +13,9 @@ services:
       SKILLS_PATH: /skills
       SEED_DEMO: "true"
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - docflow_data:/data
     depends_on:

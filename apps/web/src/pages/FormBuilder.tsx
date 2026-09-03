@@ -8,17 +8,29 @@ function nid() {
   return Math.random().toString(16).slice(2, 10);
 }
 
+type ChatMsg = {
+  role: "user" | "assistant";
+  text: string;
+  provider?: string;
+  knowledge?: { applied?: boolean; href?: string; also?: string; reason?: string; action?: string };
+  unclear?: string[];
+};
+
 export default function FormBuilder() {
   const { id } = useParams();
   const nav = useNavigate();
   const [name, setName] = useState("Untitled form");
   const [language, setLanguage] = useState(localStorage.getItem("docflow.lang") || "en");
-  const [prompt, setPrompt] = useState("Invoice approval with department dropdown and a required signature");
+  const [prompt, setPrompt] = useState(
+    "day summery to students , date automatic , rate today class, signature mandatory, email by user , did the student was in class, which topic was best explained"
+  );
   const [fields, setFields] = useState<any[]>([]);
   const [sel, setSel] = useState(0);
   const [formId, setFormId] = useState<number | null>(id ? Number(id) : null);
   const [msg, setMsg] = useState("");
   const [share, setShare] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [thread, setThread] = useState<ChatMsg[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -62,10 +74,38 @@ export default function FormBuilder() {
   };
 
   const compose = async () => {
-    const r = await FormsAPI.compose({ prompt, language, use_rag: true });
-    setName(r.name);
-    setFields(r.fields);
-    setMsg("Drafted from chat + context");
+    const asked = prompt.trim();
+    if (!asked || busy) return;
+    setBusy(true);
+    setThread((t) => [...t, { role: "user", text: asked }]);
+    try {
+      const r = await FormsAPI.compose({ prompt: asked, language, use_rag: true });
+      setName(r.name);
+      setFields(r.fields || []);
+      setSel(0);
+      setThread((t) => [
+        ...t,
+        {
+          role: "assistant",
+          text: r.reply || "I drafted the form from your chat.",
+          provider: r.provider,
+          knowledge: r.knowledge,
+          unclear: r.unclear,
+        },
+      ]);
+      setMsg(r.provider === "ollama" ? `Drafted with Ollama (${r.model})` : "Drafted from chat");
+    } catch (e: any) {
+      setThread((t) => [
+        ...t,
+        {
+          role: "assistant",
+          text: `I could not draft that: ${e.message}. Rephrase, or pick a field type on the left.`,
+        },
+      ]);
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const selected = fields[sel];
@@ -107,12 +147,46 @@ export default function FormBuilder() {
         </div>
       </div>
       <div className="chatbar">
-        <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Tell the desk what this form is for…" />
-        <button className="btn primary" data-demo="compose" onClick={compose}>
-          Draft with chat
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && compose()}
+          placeholder="Tell the desk what this form is for…"
+        />
+        <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy}>
+          {busy ? "Listening…" : "Draft with chat"}
         </button>
       </div>
-      {msg && <p className="pill ok">{msg} {share && <a href={share}> {share}</a>}</p>}
+      {thread.length > 0 && (
+        <div className="chat-thread" data-demo="chat-reply">
+          {thread.map((m, i) => (
+            <div key={i} className={`bubble ${m.role}`}>
+              <div className="eyebrow">{m.role === "user" ? "You" : m.provider === "ollama" ? "Ollama" : "Desk"}</div>
+              <p>{m.text}</p>
+              {m.role === "assistant" && m.knowledge && !m.knowledge.applied && (
+                <p className="pill warn">
+                  {m.knowledge.reason || "No knowledge source applied."}{" "}
+                  <a href={m.knowledge.href || "/app/connectors"}>Open Connectors</a>
+                  {m.knowledge.also && (
+                    <>
+                      {" "}
+                      · <a href={m.knowledge.also}>Manage folders</a>
+                    </>
+                  )}
+                </p>
+              )}
+              {m.unclear && m.unclear.length > 0 && (
+                <p className="pill">I did not fully understand: {m.unclear.join("; ")}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && (
+        <p className="pill ok">
+          {msg} {share && <a href={share}> {share}</a>}
+        </p>
+      )}
       <div className="builder-grid">
         <div className="card palette">
           <div className="eyebrow">Fields</div>

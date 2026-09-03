@@ -7,7 +7,8 @@
 5. Open the document: OCR text, fields, re-run a flow.
 6. Flows: step chips and recent run history (completed steps, not a fake queue).
 7. Automations: invoice/contract routers with fire counts.
-8. Agents: run **Summarize** or **Invoice Extraction**.
-9. Admin: users, block, flags, model bindings, health.
+10. Connectors: Google Drive, Microsoft 365, local DB, and **Ollama** (start `ollama serve`, pull a model, Use this model).
+11. Forms → New: chat a brief (e.g. day summary for students). The desk **always replies**. Missing roster/topics → Connectors / Manage.
+12. Admin: users, block, flags, model bindings, health (includes Ollama).
 
 API walkthrough: http://localhost:8000/docs

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ConnectAPI } from "../api";
+import { AgentAPI, ConnectAPI } from "../api";
 
 const SOURCES = [
   {
@@ -25,7 +25,15 @@ const SOURCES = [
 export default function Connectors() {
   const [rows, setRows] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
-  const load = () => ConnectAPI.list().then(setRows);
+  const [ollama, setOllama] = useState<any>(null);
+  const [pick, setPick] = useState("");
+  const load = () => {
+    ConnectAPI.list().then(setRows);
+    AgentAPI.ollama().then((o) => {
+      setOllama(o);
+      setPick(o.default || o.models?.[0] || "");
+    });
+  };
   useEffect(() => {
     load();
   }, []);
@@ -49,7 +57,7 @@ export default function Connectors() {
       <h1 className="mark" style={{ fontSize: 32 }}>
         Connectors
       </h1>
-      <p className="muted">Google Drive, Microsoft 365, and the desk database feed the form chatbot and n8n flows.</p>
+      <p className="muted">Google Drive, Microsoft 365, the desk database, and local Ollama models feed the form chatbot and n8n flows.</p>
       {msg && <p className="pill ok">{msg}</p>}
       <div className="grid cards-3" style={{ marginTop: 16 }}>
         {SOURCES.map((src) => {
@@ -88,6 +96,51 @@ export default function Connectors() {
             </div>
           );
         })}
+        <div className="card connector-card" data-demo="connector-ollama">
+          <div className="brand" style={{ padding: 0, marginBottom: 10 }}>
+            <div className="sigil src-ollama">Ol</div>
+            <div>
+              <div className="mark">Ollama (local models)</div>
+              <div className="eyebrow">{ollama?.up ? "connected" : "offline"}</div>
+            </div>
+          </div>
+          <p className="muted" style={{ minHeight: 48 }}>
+            {ollama?.up
+              ? `Talking to ${ollama.url}. ${ollama.models?.length ? "Pulled: " + ollama.models.join(", ") : "No models yet — run ollama pull llama3.2"}`
+              : `Not reachable at ${ollama?.url || "http://127.0.0.1:11434"}. Start with ollama serve, then bind a model.`}
+          </p>
+          {ollama?.up && (
+            <div className="field" style={{ marginBottom: 10 }}>
+              <select value={pick} onChange={(e) => setPick(e.target.value)}>
+                {(ollama.models || []).map((m: string) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="row-actions">
+            <button className="btn" onClick={() => AgentAPI.ollama().then(setOllama)}>
+              Refresh
+            </button>
+            {ollama?.up && (
+              <button
+                className="btn primary"
+                data-demo="bind-ollama"
+                onClick={async () => {
+                  try {
+                    const r = await AgentAPI.useOllama(pick);
+                    setMsg(`Bound ${r.model} to form builder, agents, and flows`);
+                    load();
+                  } catch (e: any) {
+                    setMsg(e.message);
+                  }
+                }}
+              >
+                Use this model
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

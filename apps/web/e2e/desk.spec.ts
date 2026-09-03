@@ -18,6 +18,8 @@ test.describe("desk", () => {
   test("creates a live form from chat", async ({ page }) => {
     await openTab(page, "/app/forms/new");
     await page.locator("[data-demo=compose]").click();
+    await expect(page.locator("[data-demo=chat-reply]")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("[data-demo=chat-reply] .bubble.assistant")).toContainText(/I drafted|understood|Connectors/i);
     await expect(page.locator(".paper-row").first()).toBeVisible({ timeout: 15_000 });
     await page.locator("[data-demo=publish]").click();
     await expect(page.getByText(/In the automation folder — form is alive|Alive:/i)).toBeVisible({ timeout: 15_000 });
@@ -29,6 +31,8 @@ test.describe("desk", () => {
     await expect(page.locator("[data-demo=connector-google_drive]")).toBeVisible();
     await expect(page.locator("[data-demo=connector-microsoft]")).toBeVisible();
     await expect(page.locator("[data-demo=connector-local_db]")).toBeVisible();
+    await expect(page.locator("[data-demo=connector-ollama]")).toBeVisible();
+    await expect(page.locator("[data-demo=connector-ollama]")).toContainText(/Ollama|offline|connected/i);
     await page.locator("[data-demo=sync-google_drive]").click();
     await expect(page.getByText(/Synced/i)).toBeVisible({ timeout: 15_000 });
     await page.locator("[data-demo=sync-microsoft]").click();

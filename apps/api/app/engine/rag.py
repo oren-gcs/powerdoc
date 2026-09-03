@@ -32,21 +32,21 @@ def upsert_chunk(db: Session, tenant_id: int, source_type: str, source_id: str, 
         )
 
 
-def retrieve(db: Session, tenant_id: int, query: str, limit: int = 8) -> list[dict]:
+def retrieve(db: Session, tenant_id: int, query: str, limit: int = 8, *, min_score: int = 1, fallback_fields: bool = True) -> list[dict]:
     tokens = [t.lower() for t in query.replace(",", " ").split() if len(t) > 2]
     rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.tenant_id == tenant_id).all()
     scored = []
     for r in rows:
         hay = f"{r.title} {r.text}".lower()
         score = sum(1 for t in tokens if t in hay)
-        if score:
+        if score >= min_score:
             scored.append((score, r))
     if not scored:
         ocrs = db.query(OCRResult).filter(OCRResult.tenant_id == tenant_id).all()
         for o in ocrs:
             hay = (o.text or "").lower()
             score = sum(1 for t in tokens if t in hay)
-            if score:
+            if score >= min_score:
                 scored.append((score, o))
     scored.sort(key=lambda x: x[0], reverse=True)
     out = []
@@ -55,7 +55,7 @@ def retrieve(db: Session, tenant_id: int, query: str, limit: int = 8) -> list[di
             out.append({"title": r.title, "text": r.text[:1200], "source": r.source_type, "score": score})
         else:
             out.append({"title": f"document:{r.document_id}", "text": (r.text or "")[:1200], "source": "ocr", "score": score})
-    if not out:
+    if not out and fallback_fields:
         fields = db.query(ExtractedField).limit(20).all()
         if fields:
             text = ", ".join(f"{f.name}={f.value}" for f in fields)

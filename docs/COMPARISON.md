@@ -25,7 +25,7 @@ Build **one** platform — **DocFlow 2.0** — that completes Doc-Power’s doma
 - Automations fire the matching workflow on classify/upload.
 - Orchestrator pipeline replaces the cross-service HTTP chain that drifted out of sync.
 - Gateway-shaped single API so the UI can reach documents, workflows, OCR, analytics, agents, admin.
-- Skills on disk + MCP server + in-app agent console.
+- Skills on disk + MCP server + in-app agent console; **Ollama** is the default local LLM (Connectors bind a pulled model to form builder and agents).
 - Analytics from real tables, not hardcoded admin stats.
 - Local SQLite *and* Compose Postgres; Terraform for AWS (VPC, ALB, ECS, RDS, S3) and GCP (Cloud Run, Cloud SQL, GCS); Kubernetes manifests.
 - UI: landing, auth, overview, library, inspector, flows, automations, agents, analytics, inbox, admin — all routed and wired.

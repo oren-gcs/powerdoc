@@ -338,6 +338,35 @@ pre.ocr {
   padding: 12px 14px;
   border-radius: 12px;
 }
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 16px;
+  max-width: 820px;
+}
+.bubble {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(8, 16, 12, 0.55);
+}
+.bubble p { margin: 6px 0 0; white-space: pre-wrap; line-height: 1.5; }
+.bubble.user {
+  align-self: flex-end;
+  background: rgba(212, 176, 106, 0.12);
+  border-color: rgba(212, 176, 106, 0.35);
+}
+.bubble.assistant {
+  align-self: stretch;
+  background: rgba(20, 36, 28, 0.9);
+}
+.pill.warn {
+  background: rgba(212, 176, 106, 0.16);
+  color: var(--brass, #d4b06a);
+  margin-top: 10px;
+}
+.src-ollama { background: conic-gradient(from 40deg, #8fbfa0, #d4b06a, #2a4a38, #8fbfa0); }
 .builder-grid {
   display: grid;
   grid-template-columns: 140px 1fr 260px;

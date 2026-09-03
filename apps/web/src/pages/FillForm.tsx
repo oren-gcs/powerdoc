@@ -18,6 +18,12 @@ export default function FillForm() {
     if (!token) return;
     FormsAPI.publicGet(token).then((f) => {
       setForm(f);
+      const today = new Date().toISOString().slice(0, 10);
+      const seed: Record<string, string> = {};
+      for (const field of f.fields || []) {
+        if (field.type === "date" && field.auto === "today") seed[field.id] = today;
+      }
+      setAnswers(seed);
       document.documentElement.lang = f.language;
       document.documentElement.dir = dirFor(f.language);
     }).catch((e) => setErr(e.message));
@@ -107,16 +113,16 @@ export default function FillForm() {
                   {i + 1}. {f.label} {f.required ? "*" : ""}
                 </label>
                 {f.type === "textarea" ? (
-                  <textarea onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required} />
+                  <textarea value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required} />
                 ) : f.type === "dropdown" || f.type === "radio" ? (
-                  <select onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
+                  <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
                     <option value="">—</option>
                     {(f.options || []).map((o: string) => (
                       <option key={o}>{o}</option>
                     ))}
                   </select>
                 ) : f.type === "yesno" ? (
-                  <select onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
+                  <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
                     <option value="">—</option>
                     <option>yes</option>
                     <option>no</option>
@@ -124,7 +130,12 @@ export default function FillForm() {
                 ) : f.type === "signature" ? (
                   <canvas ref={canvas} width={520} height={140} className="sign-pad" />
                 ) : (
-                  <input type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} required={f.required} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} />
+                  <input
+                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
+                    required={f.required}
+                    value={answers[f.id] || ""}
+                    onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
+                  />
                 )}
               </>
             )}

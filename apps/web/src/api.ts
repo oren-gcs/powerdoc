@@ -88,6 +88,8 @@ export const AgentAPI = {
     fd.append("file", file);
     return api("/api/v1/agent/process-document", { method: "POST", body: fd });
   },
+  ollama: () => api("/api/v1/agent/ollama"),
+  useOllama: (model = "") => api(`/api/v1/agent/ollama/use?model=${encodeURIComponent(model)}`, { method: "POST" }),
 };
 
 export const AnalyticsAPI = {

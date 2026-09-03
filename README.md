@@ -25,7 +25,22 @@ cd apps/api && PYTHONPATH=. python3 -m uvicorn app.main:app --host 0.0.0.0 --por
 cd apps/web && npm install && npm run dev
 ```
 
-Optional LLM: run Ollama locally or set `OPENAI_API_KEY`. Without either, heuristic agents still complete the pipeline (good for demos and CI).
+Optional LLM: **Ollama first** (local models), then OpenAI, then heuristic agents.
+
+```bash
+# on the same machine as the API
+ollama serve
+ollama pull llama3.2
+```
+
+Set in `.env` (see `.env.example`):
+
+```
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.2
+```
+
+In the desk: **Connectors → Ollama → Use this model**. Form-builder chat, agents, and flows then call that local model. If Ollama is down, chat still replies (heuristic) and points you to Connectors. Without either Ollama or `OPENAI_API_KEY`, heuristic agents still complete the pipeline (good for demos and CI).
 
 ## Docker / Compose
 
