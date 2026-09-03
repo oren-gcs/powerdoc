@@ -5,8 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
-from app.routers import admin, agents, analytics, auth, automations, documents, health, mcp_http, workflows
-from app.seed import seed_if_needed
+from app.migrate import ensure_sqlite_columns
+from app.routers import admin, agents, analytics, auth, automations, connectors, documents, forms, health, mcp_http, org, workflows
+from app.seed import seed_extensions, seed_if_needed
 
 settings = get_settings()
 
@@ -14,10 +15,12 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_columns(engine)
     if settings.seed_demo:
         db = SessionLocal()
         try:
             seed_if_needed(db)
+            seed_extensions(db)
         finally:
             db.close()
     yield
@@ -46,6 +49,10 @@ app.include_router(automations.router)
 app.include_router(agents.router)
 app.include_router(analytics.router)
 app.include_router(admin.router)
+app.include_router(org.router)
+app.include_router(forms.router)
+app.include_router(forms.public)
+app.include_router(connectors.router)
 app.include_router(mcp_http.router)
 
 

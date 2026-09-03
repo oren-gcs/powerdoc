@@ -28,6 +28,7 @@ class UserOut(BaseModel):
     full_name: str
     role: str
     tenant_id: int
+    locale: str = "en"
     is_active: bool
     is_blocked: bool
     created_at: datetime
@@ -78,7 +79,7 @@ class WorkflowIn(BaseModel):
 
 class AutomationIn(BaseModel):
     name: str
-    trigger_type: Literal["on_upload", "on_classify", "webhook", "schedule"]
+    trigger_type: Literal["on_upload", "on_classify", "webhook", "schedule", "on_form_submit"]
     trigger_config: dict[str, Any] = Field(default_factory=dict)
     workflow_id: int
     is_active: bool = True

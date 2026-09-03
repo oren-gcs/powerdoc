@@ -96,6 +96,35 @@ export const AnalyticsAPI = {
   read: (id: number) => api(`/api/v1/analytics/notifications/${id}/read`, { method: "POST" }),
 };
 
+export const OrgAPI = {
+  tree: () => api("/api/v1/org/tree"),
+  layer: (body: object) => api("/api/v1/org/layers", { method: "POST", body: JSON.stringify(body) }),
+  member: (layerId: number, body: object) =>
+    api(`/api/v1/org/layers/${layerId}/members`, { method: "POST", body: JSON.stringify(body) }),
+  folder: (body: object) => api("/api/v1/org/folders", { method: "POST", body: JSON.stringify(body) }),
+  grant: (body: object) => api("/api/v1/org/grants", { method: "POST", body: JSON.stringify(body) }),
+};
+
+export const FormsAPI = {
+  list: () => api("/api/v1/forms"),
+  get: (id: number) => api(`/api/v1/forms/${id}`),
+  create: (body: object) => api("/api/v1/forms", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: number, body: object) => api(`/api/v1/forms/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  compose: (body: object) => api("/api/v1/forms/compose", { method: "POST", body: JSON.stringify(body) }),
+  publish: (id: number) => api(`/api/v1/forms/${id}/publish`, { method: "POST" }),
+  share: (id: number, body: object) => api(`/api/v1/forms/${id}/share`, { method: "POST", body: JSON.stringify(body) }),
+  submissions: (id: number) => api(`/api/v1/forms/${id}/submissions`),
+  publicGet: (token: string) => api(`/api/v1/public/forms/${token}`),
+  publicSubmit: (token: string, body: object) =>
+    api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: JSON.stringify(body) }),
+};
+
+export const ConnectAPI = {
+  list: () => api("/api/v1/connectors"),
+  add: (body: object) => api("/api/v1/connectors", { method: "POST", body: JSON.stringify(body) }),
+  sync: (id: number) => api(`/api/v1/connectors/${id}/sync`, { method: "POST" }),
+};
+
 export const AdminAPI = {
   stats: () => api("/api/v1/admin/stats"),
   users: () => api("/api/v1/admin/users"),

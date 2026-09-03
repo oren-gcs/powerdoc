@@ -7,6 +7,7 @@ type User = {
   full_name: string;
   role: string;
   tenant_id: number;
+  locale?: string;
 };
 
 const Ctx = createContext<{

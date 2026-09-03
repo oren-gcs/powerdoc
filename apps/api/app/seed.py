@@ -166,3 +166,93 @@ def seed_if_needed(db) -> None:
         db.commit()
         db.refresh(doc)
         process_document(db, doc)
+
+
+def seed_extensions(db) -> None:
+    from app.engine.formgen import compose_form
+    from app.engine.rag import upsert_chunk
+    from app.models import AccessGrant, Connector, Folder, Form, Layer, LayerMember, OCRResult, Workflow
+
+    if db.query(Layer).first():
+        return
+    tenant = db.query(Tenant).first()
+    if not tenant:
+        return
+    users = {u.email: u for u in db.query(User).filter(User.tenant_id == tenant.id).all()}
+    owner = users.get("oren@gcs-tech.org") or db.query(User).filter(User.tenant_id == tenant.id).first()
+    if not owner:
+        return
+    org = Layer(tenant_id=tenant.id, name="GCS Tech", kind="org", locale="en")
+    db.add(org)
+    db.flush()
+    finance = Layer(tenant_id=tenant.id, parent_id=org.id, name="Finance", kind="department", locale="en")
+    legal = Layer(tenant_id=tenant.id, parent_id=org.id, name="Legal", kind="department", locale="he")
+    remote = Layer(tenant_id=tenant.id, parent_id=org.id, name="Remote vendors", kind="remote", locale="en")
+    db.add_all([finance, legal, remote])
+    db.flush()
+    for email, layer, title, manage in (
+        ("oren@gcs-tech.org", org, "owner", True),
+        ("operator@docflow.example", finance, "AP operator", False),
+        ("operator@docflow.local", finance, "AP operator", False),
+        ("viewer@docflow.example", remote, "vendor", False),
+        ("viewer@docflow.local", remote, "vendor", False),
+    ):
+        u = users.get(email)
+        if u:
+            db.add(LayerMember(layer_id=layer.id, user_id=u.id, title=title, can_manage=manage))
+    files = Folder(tenant_id=tenant.id, layer_id=org.id, name="Library", kind="files")
+    forms_folder = Folder(tenant_id=tenant.id, layer_id=finance.id, name="Draft forms", kind="forms")
+    live = Folder(tenant_id=tenant.id, layer_id=org.id, name="Automation", kind="automation")
+    db.add_all([files, forms_folder, live])
+    db.flush()
+    wf = db.query(Workflow).filter(Workflow.tenant_id == tenant.id).first()
+    built = compose_form("invoice approval with department dropdown and signature", "en")
+    form = Form(
+        tenant_id=tenant.id,
+        folder_id=forms_folder.id,
+        layer_id=finance.id,
+        created_by=owner.id,
+        name=built["name"],
+        topic=built["topic"],
+        description="Seeded AP approval form",
+        language="en",
+        definition={"fields": built["fields"]},
+        workflow_id=wf.id if wf else None,
+        status="draft",
+    )
+    db.add(form)
+    db.flush()
+    he = compose_form("טופס אישור חשבונית", "he")
+    db.add(
+        Form(
+            tenant_id=tenant.id,
+            folder_id=forms_folder.id,
+            layer_id=finance.id,
+            created_by=owner.id,
+            name=he["name"],
+            topic=he["topic"],
+            description="טופס בעברית",
+            language="he",
+            definition={"fields": he["fields"]},
+            status="draft",
+        )
+    )
+    from secrets import token_urlsafe
+    from datetime import datetime as dt
+
+    form.status = "live"
+    form.share_token = token_urlsafe(12)
+    form.published_at = dt.utcnow()
+    db.add(AccessGrant(tenant_id=tenant.id, principal_type="layer", principal_id=finance.id, resource_type="form", resource_id=form.id, permission="edit"))
+    db.add(AccessGrant(tenant_id=tenant.id, principal_type="layer", principal_id=remote.id, resource_type="form", resource_id=form.id, permission="fill"))
+    db.add_all(
+        [
+            Connector(tenant_id=tenant.id, kind="google_drive", name="Google Drive (sandbox)", status="connected", config={"mode": "sandbox"}),
+            Connector(tenant_id=tenant.id, kind="microsoft", name="Microsoft 365 (sandbox)", status="connected", config={"mode": "sandbox"}),
+            Connector(tenant_id=tenant.id, kind="local_db", name="DocFlow database", status="connected", config={"mode": "local"}),
+        ]
+    )
+    for o in db.query(OCRResult).filter(OCRResult.tenant_id == tenant.id).all():
+        upsert_chunk(db, tenant.id, "ocr", str(o.document_id), f"doc {o.document_id}", o.text or "")
+    db.commit()
+

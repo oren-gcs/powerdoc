@@ -87,3 +87,28 @@ def refresh(refresh_token: str, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)):
     return user
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(locale: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if locale not in ("en", "he", "ar", "es", "fr"):
+        raise HTTPException(400, "Unsupported language")
+    user.locale = locale
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+LANGUAGES = [
+    {"code": "en", "name": "English", "native": "English", "dir": "ltr"},
+    {"code": "he", "name": "Hebrew", "native": "עברית", "dir": "rtl"},
+    {"code": "ar", "name": "Arabic", "native": "العربية", "dir": "rtl"},
+    {"code": "es", "name": "Spanish", "native": "Español", "dir": "ltr"},
+    {"code": "fr", "name": "French", "native": "Français", "dir": "ltr"},
+]
+
+
+@router.get("/languages")
+def languages():
+    return LANGUAGES
+

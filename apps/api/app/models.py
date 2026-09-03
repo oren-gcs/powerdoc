@@ -46,6 +46,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"))
+    locale: Mapped[str] = mapped_column(String(16), default="en")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -233,3 +234,143 @@ class Job(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Layer(Base):
+    __tablename__ = "layers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(160))
+    kind: Mapped[str] = mapped_column(String(40), default="team")
+    locale: Mapped[str] = mapped_column(String(16), default="en")
+
+
+class LayerMember(Base):
+    __tablename__ = "layer_members"
+    __table_args__ = (UniqueConstraint("layer_id", "user_id", name="uq_layer_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layer_id: Mapped[int] = mapped_column(ForeignKey("layers.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(80), default="member")
+    can_manage: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Folder(Base):
+    __tablename__ = "folders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    layer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(160))
+    kind: Mapped[str] = mapped_column(String(40), default="files")
+
+
+class FolderItem(Base):
+    __tablename__ = "folder_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    folder_id: Mapped[int] = mapped_column(ForeignKey("folders.id"), index=True)
+    resource_type: Mapped[str] = mapped_column(String(40))
+    resource_id: Mapped[int] = mapped_column(Integer)
+
+
+class AccessGrant(Base):
+    __tablename__ = "access_grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    principal_type: Mapped[str] = mapped_column(String(16))
+    principal_id: Mapped[int] = mapped_column(Integer)
+    resource_type: Mapped[str] = mapped_column(String(40))
+    resource_id: Mapped[int] = mapped_column(Integer)
+    permission: Mapped[str] = mapped_column(String(16), default="view")
+
+
+class Form(Base):
+    __tablename__ = "forms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    folder_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    layer_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(160))
+    topic: Mapped[str] = mapped_column(String(160), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(24), default="draft")
+    language: Mapped[str] = mapped_column(String(16), default="en")
+    definition: Mapped[dict] = mapped_column(JSON, default=dict)
+    workflow_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    automation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class FormShare(Base):
+    __tablename__ = "form_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("forms.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(24), default="link")
+    recipient: Mapped[str] = mapped_column(String(255))
+    locale: Mapped[str] = mapped_column(String(16), default="en")
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class FormSubmission(Base):
+    __tablename__ = "form_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("forms.id"), index=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    submitter_name: Mapped[str] = mapped_column(String(160), default="")
+    submitter_email: Mapped[str] = mapped_column(String(255), default="")
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    locale: Mapped[str] = mapped_column(String(16), default="en")
+    document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="received")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RecordRow(Base):
+    __tablename__ = "record_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    form_id: Mapped[int] = mapped_column(Integer, index=True)
+    submission_id: Mapped[int] = mapped_column(Integer, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Connector(Base):
+    __tablename__ = "connectors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(24), default="connected")
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    file_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    source_type: Mapped[str] = mapped_column(String(40))
+    source_id: Mapped[str] = mapped_column(String(80), default="")
+    title: Mapped[str] = mapped_column(String(255), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    locale: Mapped[str] = mapped_column(String(16), default="en")
+    extra: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

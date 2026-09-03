@@ -19,6 +19,11 @@ def match_automation(db: Session, tenant_id: int, trigger_type: str, payload: di
     classification = (payload.get("classification") or "").lower()
     for auto in autos:
         cfg = auto.trigger_config or {}
+        if trigger_type == "on_form_submit":
+            wanted = cfg.get("form_id")
+            if wanted and int(wanted) != int(payload.get("form_id") or 0):
+                continue
+            return auto
         wanted = (cfg.get("classification") or "").lower()
         if wanted and wanted != classification:
             continue

@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import AppShell from "./layout/AppShell";
-import Landing from "./pages/Landing";
+import HomePage from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Overview from "./pages/Overview";
@@ -14,6 +14,11 @@ import Agents from "./pages/Agents";
 import Analytics from "./pages/Analytics";
 import Inbox from "./pages/Inbox";
 import Admin from "./pages/Admin";
+import Manage from "./pages/Manage";
+import Forms from "./pages/Forms";
+import FormBuilder from "./pages/FormBuilder";
+import FillForm from "./pages/FillForm";
+import Connectors from "./pages/Connectors";
 
 function Guard({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth();
@@ -25,9 +30,10 @@ function Guard({ children }: { children: React.ReactElement }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/f/:token" element={<FillForm />} />
       <Route
         path="/app"
         element={
@@ -39,11 +45,16 @@ export default function App() {
         <Route index element={<Overview />} />
         <Route path="documents" element={<Documents />} />
         <Route path="documents/:id" element={<DocumentDetail />} />
+        <Route path="forms" element={<Forms />} />
+        <Route path="forms/new" element={<FormBuilder />} />
+        <Route path="forms/:id" element={<FormBuilder />} />
         <Route path="workflows" element={<Workflows />} />
         <Route path="automations" element={<Automations />} />
         <Route path="agents" element={<Agents />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="inbox" element={<Inbox />} />
+        <Route path="manage" element={<Manage />} />
+        <Route path="connectors" element={<Connectors />} />
         <Route path="admin" element={<Admin />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

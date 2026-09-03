@@ -122,3 +122,62 @@ def test_analytics_summary_ok(client):
     body = r.json()
     assert "documents" in body
     assert "success_rate" in body
+
+
+def test_locale_and_org_tree(client):
+    headers = auth_headers(client)
+    langs = client.get("/api/v1/auth/languages")
+    assert langs.status_code == 200
+    assert {x["code"] for x in langs.json()} >= {"en", "he", "ar", "es", "fr"}
+    patched = client.patch("/api/v1/auth/me?locale=he", headers=headers)
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["locale"] == "he"
+    layer = client.post("/api/v1/org/layers", headers=headers, json={"name": "Finance", "kind": "department"})
+    assert layer.status_code == 200, layer.text
+    tree = client.get("/api/v1/org/tree", headers=headers)
+    assert tree.status_code == 200
+    assert any(x["name"] == "Finance" for x in tree.json()["layers"])
+
+
+def test_form_compose_publish_and_public_submit(client):
+    headers = auth_headers(client)
+    drafted = client.post(
+        "/api/v1/forms/compose",
+        headers=headers,
+        json={"prompt": "invoice approval with department dropdown and signature", "language": "en"},
+    )
+    assert drafted.status_code == 200, drafted.text
+    fields = drafted.json()["fields"]
+    assert any(f["type"] == "dropdown" for f in fields)
+    created = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={"name": drafted.json()["name"], "description": "test", "language": "en", "fields": fields},
+    )
+    assert created.status_code == 200, created.text
+    fid = created.json()["id"]
+    live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
+    assert live.status_code == 200, live.text
+    token = live.json()["share_token"]
+    assert token
+    public = client.get(f"/api/v1/public/forms/{token}")
+    assert public.status_code == 200
+    answers = {
+        f["id"]: (f.get("options") or ["yes"])[0] if f["type"] in ("dropdown", "radio", "yesno") else "Acme"
+        for f in public.json()["fields"]
+        if f.get("required") and f["type"] not in ("heading", "signature")
+    }
+    submitted = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        json={
+            "name": "Vendor Lee",
+            "email": "lee@example.com",
+            "answers": answers,
+            "signature": "data:image/png;base64,xxx",
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["status"] == "implemented"
+    rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
+    assert rows.status_code == 200
+    assert rows.json()[0]["submitter_email"] == "lee@example.com"
