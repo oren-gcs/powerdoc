@@ -236,7 +236,11 @@ def submissions(form_id: int, user: User = Depends(current_user), db: Session = 
 
 def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
     fields = (f.definition or {}).get("fields") or []
-    missing = [x["label"] for x in fields if x.get("required") and x.get("type") != "heading" and not body.answers.get(x["id"])]
+    missing = [
+        x["label"]
+        for x in fields
+        if x.get("required") and x.get("type") not in ("heading", "signature") and not body.answers.get(x["id"])
+    ]
     if missing:
         raise HTTPException(400, f"Missing required: {', '.join(missing)}")
     if any(x.get("type") == "signature" and x.get("required") for x in fields) and not body.signature:
