@@ -38,6 +38,7 @@ class FormIn(BaseModel):
     description: str = ""
     language: str = "en"
     fields: list[dict] = []
+    recipients: list[str] = []
     layer_id: int | None = None
     folder_id: int | None = None
     workflow_id: int | None = None
@@ -63,6 +64,26 @@ class SubmitIn(BaseModel):
     locale: str = "en"
 
 
+def _clean_recipients(raw: list[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw or []:
+        email = (item or "").strip().lower()
+        if not email or "@" not in email or email in seen:
+            continue
+        seen.add(email)
+        out.append(email)
+    return out
+
+
+def _definition(fields: list[dict], recipients: list[str] | None = None) -> dict:
+    return {"fields": fields or [], "recipients": _clean_recipients(recipients)}
+
+
+def _form_recipients(f: Form) -> list[str]:
+    return _clean_recipients((f.definition or {}).get("recipients") or [])
+
+
 def _out(f: Form) -> dict:
     return {
         "id": f.id,
@@ -72,6 +93,7 @@ def _out(f: Form) -> dict:
         "status": f.status,
         "language": f.language,
         "fields": (f.definition or {}).get("fields") or [],
+        "recipients": _form_recipients(f),
         "folder_id": f.folder_id,
         "layer_id": f.layer_id,
         "workflow_id": f.workflow_id,
@@ -80,6 +102,35 @@ def _out(f: Form) -> dict:
         "share_url": f"/f/{f.share_token}" if f.share_token else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
     }
+
+
+def _notify_recipients(
+    db: Session,
+    f: Form,
+    recipients: list[str],
+    *,
+    channel: str = "email",
+    locale: str | None = None,
+    tenant_id: int,
+) -> list[str]:
+    sent: list[str] = []
+    lang = locale or f.language
+    link = f"/f/{f.share_token}"
+    for rec in _clean_recipients(recipients):
+        db.add(FormShare(form_id=f.id, channel=channel, recipient=rec, locale=lang))
+        target = db.query(User).filter(User.email == rec).first()
+        db.add(
+            Notification(
+                tenant_id=tenant_id,
+                user_id=target.id if target else None,
+                channel=channel,
+                subject=f"Please complete: {f.name}",
+                body=f"Open {link} to fill and sign. Language: {lang}.",
+                extra={"form_id": f.id, "link": link},
+            )
+        )
+        sent.append(rec)
+    return sent
 
 
 @router.get("")
@@ -97,7 +148,7 @@ def create_form(body: FormIn, user: User = Depends(require("operator")), db: Ses
         topic=body.topic,
         description=body.description,
         language=body.language,
-        definition={"fields": body.fields},
+        definition=_definition(body.fields, body.recipients),
         layer_id=body.layer_id,
         folder_id=body.folder_id,
         workflow_id=body.workflow_id,
@@ -160,7 +211,7 @@ def update_form(form_id: int, body: FormIn, user: User = Depends(require("operat
     f.topic = body.topic
     f.description = body.description
     f.language = body.language
-    f.definition = {"fields": body.fields}
+    f.definition = _definition(body.fields, body.recipients)
     f.layer_id = body.layer_id
     f.folder_id = body.folder_id
     f.workflow_id = body.workflow_id
@@ -206,9 +257,12 @@ def publish(form_id: int, user: User = Depends(require("operator")), db: Session
     f.status = "live"
     f.share_token = f.share_token or token_urlsafe(12)
     f.published_at = datetime.utcnow()
+    sent = _notify_recipients(db, f, _form_recipients(f), tenant_id=user.tenant_id)
     db.commit()
     db.refresh(f)
-    return _out(f)
+    out = _out(f)
+    out["notified"] = sent
+    return out
 
 
 @router.post("/{form_id}/share")
@@ -218,25 +272,23 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
         raise HTTPException(404, "Form not found")
     if f.status != "live":
         raise HTTPException(400, "Publish the form first")
-    sent = []
-    locale = body.locale or f.language
-    link = f"/f/{f.share_token}"
-    for rec in body.recipients:
-        db.add(FormShare(form_id=f.id, channel=body.channel, recipient=rec, locale=locale))
-        target = db.query(User).filter(User.email == rec.lower()).first()
-        db.add(
-            Notification(
-                tenant_id=user.tenant_id,
-                user_id=target.id if target else None,
-                channel=body.channel,
-                subject=f"Please complete: {f.name}",
-                body=f"Open {link} to fill and sign. Language: {locale}.",
-                extra={"form_id": f.id, "link": link},
-            )
-        )
-        sent.append(rec)
+    recipients = _clean_recipients(body.recipients) or _form_recipients(f)
+    if not recipients:
+        raise HTTPException(400, "Add at least one recipient")
+    # Persist chosen recipients on the form so the builder preview stays in sync.
+    definition = dict(f.definition or {})
+    definition["recipients"] = recipients
+    f.definition = definition
+    sent = _notify_recipients(
+        db,
+        f,
+        recipients,
+        channel=body.channel,
+        locale=body.locale,
+        tenant_id=user.tenant_id,
+    )
     db.commit()
-    return {"sent": sent, "link": link, "channel": body.channel}
+    return {"sent": sent, "link": f"/f/{f.share_token}", "channel": body.channel}
 
 
 @router.get("/{form_id}/submissions")
@@ -326,7 +378,9 @@ def public_get(token: str, db: Session = Depends(get_db)):
     f = db.query(Form).filter(Form.share_token == token, Form.status == "live").first()
     if not f:
         raise HTTPException(404, "Form is not live")
-    return _out(f)
+    out = _out(f)
+    out.pop("recipients", None)
+    return out
 
 
 @public.post("/{token}/submit")

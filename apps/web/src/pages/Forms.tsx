@@ -61,6 +61,12 @@ export default function Forms() {
                       Open link
                     </a>
                   )}
+                  {(f.recipients || []).length > 0 && (
+                    <span className="muted" title={(f.recipients || []).join(", ")}>
+                      → {(f.recipients || []).slice(0, 2).join(", ")}
+                      {(f.recipients || []).length > 2 ? "…" : ""}
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,12 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FormsAPI } from "../api";
+import { FormsAPI, OrgAPI } from "../api";
 import FormExit from "../components/FormExit";
+import { t } from "../i18n";
 
 const TYPES = ["text", "textarea", "number", "date", "email", "phone", "dropdown", "radio", "yesno", "signature", "heading"];
 
 function nid() {
   return Math.random().toString(16).slice(2, 10);
+}
+
+function parseRecipients(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,;\s]+/)) {
+    const email = part.trim().toLowerCase();
+    if (!email || !email.includes("@") || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
 }
 
 type ChatMsg = {
@@ -17,6 +30,8 @@ type ChatMsg = {
   unclear?: string[];
 };
 
+type DeskUser = { id: number; email: string; full_name?: string; role?: string };
+
 export default function FormBuilder() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -26,6 +41,8 @@ export default function FormBuilder() {
     "day summery to students , date automatic , rate today class, signature mandatory, email by user , did the student was in class, which topic was best explained"
   );
   const [fields, setFields] = useState<any[]>([]);
+  const [recipientsText, setRecipientsText] = useState("");
+  const [deskUsers, setDeskUsers] = useState<DeskUser[]>([]);
   const [sel, setSel] = useState(0);
   const [formId, setFormId] = useState<number | null>(id ? Number(id) : null);
   const [msg, setMsg] = useState("");
@@ -33,12 +50,21 @@ export default function FormBuilder() {
   const [busy, setBusy] = useState(false);
   const [thread, setThread] = useState<ChatMsg[]>([]);
 
+  const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
+
+  useEffect(() => {
+    OrgAPI.tree()
+      .then((tree) => setDeskUsers(tree.users || []))
+      .catch(() => setDeskUsers([]));
+  }, []);
+
   useEffect(() => {
     if (!id) return;
     FormsAPI.get(Number(id)).then((f) => {
       setName(f.name);
       setLanguage(f.language);
       setFields(f.fields || []);
+      setRecipientsText((f.recipients || []).join(", "));
       setFormId(f.id);
     });
   }, [id]);
@@ -57,11 +83,20 @@ export default function FormBuilder() {
     setSel(fields.length);
   };
 
+  const toggleDeskUser = (email: string) => {
+    const current = new Set(recipients);
+    const key = email.toLowerCase();
+    if (current.has(key)) current.delete(key);
+    else current.add(key);
+    setRecipientsText([...current].join(", "));
+  };
+
   const persist = async () => {
-    const body = { name, topic: "", description: prompt, language, fields };
+    const body = { name, topic: "", description: prompt, language, fields, recipients };
     const f = formId ? await FormsAPI.update(formId, body) : await FormsAPI.create(body);
     setFormId(f.id);
-    setMsg("Saved draft");
+    setRecipientsText((f.recipients || []).join(", "));
+    setMsg(t(language, "formSaved"));
     if (!id) nav(`/app/forms/${f.id}`, { replace: true });
     return f;
   };
@@ -116,8 +151,10 @@ export default function FormBuilder() {
       <div className="topbar">
         <div>
           <FormExit fallback="/app/forms" variant="on-dark" />
-          <div className="eyebrow">Anyone can build this</div>
-          <input className="ghost-title" value={name} onChange={(e) => setName(e.target.value)} />
+          <div>
+            <div className="eyebrow">Anyone can build this</div>
+            <input className="ghost-title" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
         </div>
         <div className="row-actions">
           <select value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -138,7 +175,12 @@ export default function FormBuilder() {
                 const saved = await persist();
                 const live = await FormsAPI.publish(saved.id);
                 setShare(live.share_url);
-                setMsg("In the automation folder — form is alive");
+                const notified = live.notified || [];
+                setMsg(
+                  notified.length
+                    ? `${t(language, "formAlive")} · ${t(language, "willBeSentTo")} ${notified.join(", ")}`
+                    : t(language, "formAlive")
+                );
               } catch (e: any) {
                 setMsg(e.message);
               }
@@ -189,6 +231,44 @@ export default function FormBuilder() {
           {msg} {share && <a href={share}> {share}</a>}
         </p>
       )}
+      <div className="card form-options" data-demo="form-recipients">
+        <div className="eyebrow">{t(language, "formOptions")}</div>
+        <div className="field">
+          <label>{t(language, "sendTo")}</label>
+          <input
+            value={recipientsText}
+            onChange={(e) => setRecipientsText(e.target.value)}
+            placeholder={t(language, "recipientsPlaceholder")}
+            aria-label={t(language, "sendTo")}
+          />
+        </div>
+        {deskUsers.length > 0 && (
+          <div className="recipient-picks">
+            <div className="muted">{t(language, "deskPeople")}</div>
+            <div className="recipient-chips">
+              {deskUsers.map((u) => {
+                const on = recipients.includes((u.email || "").toLowerCase());
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className={`btn recipient-chip ${on ? "on" : ""}`}
+                    onClick={() => toggleDeskUser(u.email)}
+                  >
+                    {u.full_name || u.email}
+                    {u.role ? ` · ${u.role}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <p className={`recipients-preview ${recipients.length ? "ready" : ""}`}>
+          {recipients.length
+            ? `${t(language, "willBeSentTo")} ${recipients.join(", ")}`
+            : t(language, "noRecipientsYet")}
+        </p>
+      </div>
       <div className="builder-grid">
         <div className="card palette">
           <div className="eyebrow">Fields</div>

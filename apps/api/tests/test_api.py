@@ -153,14 +153,32 @@ def test_form_compose_publish_and_public_submit(client):
     created = client.post(
         "/api/v1/forms",
         headers=headers,
-        json={"name": drafted.json()["name"], "description": "test", "language": "en", "fields": fields},
+        json={
+            "name": drafted.json()["name"],
+            "description": "test",
+            "language": "en",
+            "fields": fields,
+            "recipients": ["ops@example.com", "finance@example.com", "ops@example.com"],
+        },
     )
     assert created.status_code == 200, created.text
     fid = created.json()["id"]
+    assert created.json()["recipients"] == ["ops@example.com", "finance@example.com"]
     live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
     assert live.status_code == 200, live.text
     token = live.json()["share_token"]
     assert token
+    assert live.json()["notified"] == ["ops@example.com", "finance@example.com"]
+    assert live.json()["recipients"] == ["ops@example.com", "finance@example.com"]
+    shared = client.post(
+        f"/api/v1/forms/{fid}/share",
+        headers=headers,
+        json={"channel": "email", "recipients": ["counsel@example.com"]},
+    )
+    assert shared.status_code == 200, shared.text
+    assert shared.json()["sent"] == ["counsel@example.com"]
+    refreshed = client.get(f"/api/v1/forms/{fid}", headers=headers)
+    assert refreshed.json()["recipients"] == ["counsel@example.com"]
     public = client.get(f"/api/v1/public/forms/{token}")
     assert public.status_code == 200
     answers = {

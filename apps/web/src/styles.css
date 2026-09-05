@@ -373,6 +373,34 @@ pre.ocr {
   gap: 14px;
   align-items: start;
 }
+.form-options {
+  margin-bottom: 14px;
+}
+.form-options .field {
+  margin-top: 8px;
+}
+.recipient-picks {
+  margin-top: 12px;
+}
+.recipient-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.recipient-chip.on {
+  border-color: var(--brass);
+  color: var(--brass-2);
+  background: rgba(212, 176, 106, 0.12);
+}
+.recipients-preview {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--muted, #9aab9c);
+}
+.recipients-preview.ready {
+  color: var(--brass-2);
+}
 .palette { display: flex; flex-direction: column; gap: 8px; }
 .paper {
   background: #f4efe4;
