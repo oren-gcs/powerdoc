@@ -38,7 +38,9 @@ export default function FillForm() {
     ctx.lineWidth = 2;
     const pos = (e: PointerEvent) => {
       const r = c.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      const sx = c.width / r.width;
+      const sy = c.height / r.height;
+      return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy };
     };
     const down = (e: PointerEvent) => {
       drawing.current = true;
@@ -128,7 +130,7 @@ export default function FillForm() {
                     <option>no</option>
                   </select>
                 ) : f.type === "signature" ? (
-                  <canvas ref={canvas} width={520} height={140} className="sign-pad" />
+                  <canvas ref={canvas} width={364} height={98} className="sign-pad" />
                 ) : (
                   <input
                     type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
