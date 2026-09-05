@@ -164,6 +164,10 @@ def test_form_compose_publish_and_public_submit(client):
     assert created.status_code == 200, created.text
     fid = created.json()["id"]
     assert created.json()["recipients"] == ["ops@example.com", "finance@example.com"]
+    assert created.json()["sends_to"] == [
+        {"email": "ops@example.com", "name": None},
+        {"email": "finance@example.com", "name": None},
+    ]
     live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
     assert live.status_code == 200, live.text
     token = live.json()["share_token"]
@@ -181,6 +185,10 @@ def test_form_compose_publish_and_public_submit(client):
     assert refreshed.json()["recipients"] == ["counsel@example.com"]
     public = client.get(f"/api/v1/public/forms/{token}")
     assert public.status_code == 200
+    assert "recipients" not in public.json()
+    assert public.json()["sends_to"] == [
+        {"email": "counsel@example.com", "name": None},
+    ]
     answers = {
         f["id"]: (f.get("options") or ["yes"])[0] if f["type"] in ("dropdown", "radio", "yesno") else "Acme"
         for f in public.json()["fields"]

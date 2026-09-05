@@ -430,6 +430,18 @@ pre.ocr {
   cursor: pointer;
 }
 .layer-row.on { background: rgba(212,176,106,0.08); border-radius: 10px; }
+.fill-submit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 16px;
+}
+.sends-to-note {
+  font-size: 13px;
+  line-height: 1.35;
+  max-width: 28rem;
+}
 .fill-wrap {
   min-height: 100%;
   display: grid;

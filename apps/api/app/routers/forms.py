@@ -84,8 +84,25 @@ def _form_recipients(f: Form) -> list[str]:
     return _clean_recipients((f.definition or {}).get("recipients") or [])
 
 
-def _out(f: Form) -> dict:
-    return {
+def _sends_to(db: Session, f: Form) -> list[dict]:
+    """Display labels for who receives submissions (name when known, else email)."""
+    emails = _form_recipients(f)
+    if not emails:
+        return []
+    users = {
+        (u.email or "").lower(): u
+        for u in db.query(User).filter(User.tenant_id == f.tenant_id, User.email.in_(emails)).all()
+    }
+    labels: list[dict] = []
+    for email in emails:
+        user = users.get(email)
+        name = (user.full_name or "").strip() if user else ""
+        labels.append({"email": email, "name": name or None})
+    return labels
+
+
+def _out(f: Form, db: Session | None = None) -> dict:
+    payload = {
         "id": f.id,
         "name": f.name,
         "topic": f.topic,
@@ -102,6 +119,9 @@ def _out(f: Form) -> dict:
         "share_url": f"/f/{f.share_token}" if f.share_token else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
     }
+    if db is not None:
+        payload["sends_to"] = _sends_to(db, f)
+    return payload
 
 
 def _notify_recipients(
@@ -136,7 +156,7 @@ def _notify_recipients(
 @router.get("")
 def list_forms(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.query(Form).filter(Form.tenant_id == user.tenant_id).order_by(Form.id.desc()).all()
-    return [_out(f) for f in rows]
+    return [_out(f, db) for f in rows]
 
 
 @router.post("")
@@ -157,7 +177,7 @@ def create_form(body: FormIn, user: User = Depends(require("operator")), db: Ses
     db.add(f)
     db.commit()
     db.refresh(f)
-    return _out(f)
+    return _out(f, db)
 
 
 @router.post("/compose")
@@ -199,7 +219,7 @@ def get_form(form_id: int, user: User = Depends(current_user), db: Session = Dep
     f = db.get(Form, form_id)
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
-    return _out(f)
+    return _out(f, db)
 
 
 @router.put("/{form_id}")
@@ -216,7 +236,7 @@ def update_form(form_id: int, body: FormIn, user: User = Depends(require("operat
     f.folder_id = body.folder_id
     f.workflow_id = body.workflow_id
     db.commit()
-    return _out(f)
+    return _out(f, db)
 
 
 @router.post("/{form_id}/publish")
@@ -260,7 +280,7 @@ def publish(form_id: int, user: User = Depends(require("operator")), db: Session
     sent = _notify_recipients(db, f, _form_recipients(f), tenant_id=user.tenant_id)
     db.commit()
     db.refresh(f)
-    out = _out(f)
+    out = _out(f, db)
     out["notified"] = sent
     return out
 
@@ -378,7 +398,8 @@ def public_get(token: str, db: Session = Depends(get_db)):
     f = db.query(Form).filter(Form.share_token == token, Form.status == "live").first()
     if not f:
         raise HTTPException(404, "Form is not live")
-    out = _out(f)
+    out = _out(f, db)
+    # Public fill only needs display labels next to submit — not builder config.
     out.pop("recipients", None)
     return out
 

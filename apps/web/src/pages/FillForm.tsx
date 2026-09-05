@@ -1,8 +1,22 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { FormsAPI } from "../api";
 import FormExit from "../components/FormExit";
-import { dirFor } from "../i18n";
+import { dirFor, t } from "../i18n";
+
+type SendTo = { email: string; name?: string | null };
+
+function formatSendsTo(entries: SendTo[]): string {
+  return entries
+    .map((r) => {
+      const name = (r.name || "").trim();
+      const email = (r.email || "").trim();
+      if (name && email) return `${name} · ${email}`;
+      return name || email;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
 
 export default function FillForm() {
   const { token } = useParams();
@@ -14,6 +28,8 @@ export default function FillForm() {
   const [done, setDone] = useState<any>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+
+  const sendsToLabel = useMemo(() => formatSendsTo(form?.sends_to || []), [form]);
 
   useEffect(() => {
     if (!token) return;
@@ -147,9 +163,16 @@ export default function FillForm() {
           </div>
         ))}
         {err && <p className="pill bad">{err}</p>}
-        <button className="btn primary" style={{ marginTop: 16 }}>
-          Sign and send
-        </button>
+        <div className="fill-submit-row">
+          <button className="btn primary" type="submit">
+            Sign and send
+          </button>
+          {sendsToLabel ? (
+            <span className="sends-to-note muted" data-demo="sends-to">
+              {t(form.language || "en", "sendsTo")} {sendsToLabel}
+            </span>
+          ) : null}
+        </div>
       </form>
     </div>
   );

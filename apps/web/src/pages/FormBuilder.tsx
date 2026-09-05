@@ -52,6 +52,16 @@ export default function FormBuilder() {
 
   const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
 
+  const recipientLabels = useMemo(() => {
+    const byEmail = new Map(
+      deskUsers.map((u) => [(u.email || "").toLowerCase(), (u.full_name || "").trim()])
+    );
+    return recipients.map((email) => {
+      const name = byEmail.get(email) || "";
+      return name ? `${name} · ${email}` : email;
+    });
+  }, [recipients, deskUsers]);
+
   useEffect(() => {
     OrgAPI.tree()
       .then((tree) => setDeskUsers(tree.users || []))
@@ -265,8 +275,8 @@ export default function FormBuilder() {
         )}
         <p className={`recipients-preview ${recipients.length ? "ready" : ""}`}>
           {recipients.length
-            ? `${t(language, "willBeSentTo")} ${recipients.join(", ")}`
-            : t(language, "noRecipientsYet")}
+            ? `${t(language, "sendsTo")} ${recipientLabels.join(", ")}`
+            : t(language, "recipientNotSet")}
         </p>
       </div>
       <div className="builder-grid">
