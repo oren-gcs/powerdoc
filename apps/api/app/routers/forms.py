@@ -77,12 +77,39 @@ class DigestIn(BaseModel):
     workflow_id: int | None = None
 
 
+class ArchiveIn(BaseModel):
+    """Archive a form. keep_answers=True keeps submissions/digests under the archive package;
+    keep_answers=False archives the definition only — answers stay in Answered folder / documents.
+    """
+
+    keep_answers: bool = True
+
+
 def _require_unlocked(db: Session, f: Form) -> None:
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(
+            status_code=409,
+            detail="Form is archived. Copy it to a new form or unarchive to continue.",
+        )
     if form_is_locked(db, f):
         raise HTTPException(
             status_code=409,
             detail="Form is locked after the first answer. Definition and recipients cannot be changed; open Answered to work submissions.",
         )
+
+
+def _ensure_archive_root(db: Session, tenant_id: int, layer_id: int | None) -> Folder:
+    root = (
+        db.query(Folder)
+        .filter(Folder.tenant_id == tenant_id, Folder.kind == "archive", Folder.parent_id.is_(None))
+        .first()
+    )
+    if root:
+        return root
+    root = Folder(tenant_id=tenant_id, layer_id=layer_id, name="Archive", kind="archive")
+    db.add(root)
+    db.flush()
+    return root
 
 
 def _clean_recipients(raw: list[str] | None) -> list[str]:
@@ -99,6 +126,73 @@ def _clean_recipients(raw: list[str] | None) -> list[str]:
 
 def _definition(fields: list[dict], recipients: list[str] | None = None) -> dict:
     return {"fields": fields or [], "recipients": _clean_recipients(recipients)}
+
+
+def _copy_definition(f: Form) -> dict:
+    """Deep-copy fields/options/recipients only — never submissions or answered data."""
+    src = f.definition or {}
+    fields = []
+    for field in src.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        copied = dict(field)
+        if isinstance(copied.get("options"), list):
+            copied["options"] = list(copied["options"])
+        fields.append(copied)
+    return _definition(fields, src.get("recipients") or [])
+
+
+def _deactivate_form_automation(db: Session, f: Form) -> None:
+    if not f.automation_id:
+        return
+    auto = db.get(Automation, f.automation_id)
+    if auto and auto.tenant_id == f.tenant_id:
+        auto.is_active = False
+
+
+def _archive_form(db: Session, f: Form, *, keep_answers: bool) -> Form:
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(409, "Form is already archived")
+    _deactivate_form_automation(db, f)
+    # Stop public fill immediately (public routes require status == live).
+    f.status = "archived"
+    f.archived_at = datetime.utcnow()
+    f.archive_keep_answers = keep_answers
+    f.share_token = None
+
+    if form_submission_count(db, f.id):
+        folder = ensure_answered_folder(db, f)
+        archive_root = _ensure_archive_root(db, f.tenant_id, f.layer_id)
+        if keep_answers:
+            # Keep answered package under Archive, linked to this form.
+            folder.parent_id = archive_root.id
+            folder.name = f"Archive · {f.name}"
+            folder.kind = "archive"
+            f.folder_id = archive_root.id
+        else:
+            # Form definition archived; answers stay orphan-safe in Answered / documents.
+            folder.parent_id = folder.parent_id or f.folder_id
+            folder.name = f"Answered · {f.name}"
+            folder.kind = "answered"
+            if f.folder_id and f.folder_id != folder.id:
+                f.folder_id = None
+    else:
+        f.folder_id = None
+    return f
+
+
+def _unarchive_form(db: Session, f: Form) -> Form:
+    if f.status != "archived" and not getattr(f, "archived_at", None):
+        raise HTTPException(400, "Form is not archived")
+    f.status = "draft"
+    f.archived_at = None
+    f.archive_keep_answers = None
+    if f.answered_folder_id:
+        folder = db.get(Folder, f.answered_folder_id)
+        if folder and folder.tenant_id == f.tenant_id:
+            folder.name = f"Answered · {f.name}"
+            folder.kind = "answered"
+    return f
 
 
 def _form_recipients(f: Form) -> list[str]:
@@ -123,6 +217,7 @@ def _sends_to(db: Session, f: Form) -> list[dict]:
 
 
 def _out(f: Form, db: Session | None = None) -> dict:
+    archived = f.status == "archived" or bool(getattr(f, "archived_at", None))
     payload = {
         "id": f.id,
         "name": f.name,
@@ -137,15 +232,19 @@ def _out(f: Form, db: Session | None = None) -> dict:
         "layer_id": f.layer_id,
         "workflow_id": f.workflow_id,
         "automation_id": f.automation_id,
-        "share_token": f.share_token,
-        "share_url": f"/f/{f.share_token}" if f.share_token else None,
+        "share_token": f.share_token if f.status == "live" else None,
+        "share_url": f"/f/{f.share_token}" if f.share_token and f.status == "live" else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
+        "archived_at": f.archived_at.isoformat() if getattr(f, "archived_at", None) else None,
+        "archive_keep_answers": getattr(f, "archive_keep_answers", None),
+        "archived": archived,
         "locked": False,
         "submission_count": 0,
     }
     if db is not None:
         count = form_submission_count(db, f.id)
         payload["submission_count"] = count
+        # Locked means definition frozen after first answer — still true when archived.
         payload["locked"] = count > 0
         payload["sends_to"] = _sends_to(db, f)
     return payload
@@ -290,6 +389,8 @@ def delete_form(form_id: int, user: User = Depends(require("operator")), db: Ses
     f = db.get(Form, form_id)
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(409, "Archived forms cannot be deleted. Unarchive first or leave in archive.")
     if form_is_locked(db, f):
         raise HTTPException(
             status_code=409,
@@ -301,11 +402,104 @@ def delete_form(form_id: int, user: User = Depends(require("operator")), db: Ses
     return {"ok": True, "deleted": form_id}
 
 
+@router.post("/{form_id}/copy")
+def copy_form(form_id: int, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
+    """Duplicate definition into a new unlocked draft. No submissions/answered data copied.
+    Allowed for locked and archived forms.
+    """
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    base_name = (f.name or "Form").strip() or "Form"
+    copy_name = f"{base_name} (copy)"
+    clone = Form(
+        tenant_id=user.tenant_id,
+        created_by=user.id,
+        name=copy_name[:160],
+        topic=f.topic or "",
+        description=f.description or "",
+        language=f.language or "en",
+        definition=_copy_definition(f),
+        layer_id=f.layer_id,
+        folder_id=None,
+        workflow_id=f.workflow_id,
+        automation_id=None,
+        answered_folder_id=None,
+        share_token=None,
+        status="draft",
+        archived_at=None,
+        archive_keep_answers=None,
+    )
+    db.add(clone)
+    db.flush()
+    db.add(
+        Activity(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            activity_type="form_copied",
+            details={"source_form_id": f.id, "new_form_id": clone.id},
+        )
+    )
+    db.commit()
+    db.refresh(clone)
+    out = _out(clone, db)
+    out["copied_from"] = f.id
+    return out
+
+
+@router.post("/{form_id}/archive")
+def archive_form(
+    form_id: int,
+    body: ArchiveIn,
+    user: User = Depends(require("operator")),
+    db: Session = Depends(get_db),
+):
+    """Archive a form (including locked). keep_answers controls answered-data packaging."""
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    _archive_form(db, f, keep_answers=bool(body.keep_answers))
+    db.add(
+        Activity(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            activity_type="form_archived",
+            details={"form_id": f.id, "keep_answers": bool(body.keep_answers)},
+        )
+    )
+    db.commit()
+    db.refresh(f)
+    return _out(f, db)
+
+
+@router.post("/{form_id}/unarchive")
+def unarchive_form(form_id: int, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    _unarchive_form(db, f)
+    db.add(
+        Activity(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            activity_type="form_unarchived",
+            details={"form_id": f.id},
+        )
+    )
+    db.commit()
+    db.refresh(f)
+    return _out(f, db)
+
+
 @router.post("/{form_id}/publish")
 def publish(form_id: int, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
     f = db.get(Form, form_id)
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(409, "Archived forms cannot be published. Copy to a new form or unarchive first.")
+    if form_is_locked(db, f):
+        raise HTTPException(409, "Locked forms cannot be re-published; copy to a new form instead.")
     auto_folder = (
         db.query(Folder)
         .filter(Folder.tenant_id == user.tenant_id, Folder.kind == "automation")
@@ -352,6 +546,8 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
     f = db.get(Form, form_id)
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(409, "Archived forms cannot be shared. Copy to a new form or unarchive first.")
     if f.status != "live":
         raise HTTPException(400, "Publish the form first")
     if form_is_locked(db, f) and body.recipients:

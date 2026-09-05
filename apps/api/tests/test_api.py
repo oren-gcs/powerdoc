@@ -261,6 +261,72 @@ def test_form_compose_publish_and_public_submit(client):
     assert extract.status_code == 200, extract.text
     assert extract.json()["result"]["document_id"]
 
+    # Locked form: copy → new unlocked draft with same definition, no submissions.
+    copied = client.post(f"/api/v1/forms/{fid}/copy", headers=headers)
+    assert copied.status_code == 200, copied.text
+    assert copied.json()["copied_from"] == fid
+    assert copied.json()["status"] == "draft"
+    assert copied.json()["locked"] is False
+    assert copied.json()["submission_count"] == 0
+    assert copied.json()["name"].endswith("(copy)")
+    assert len(copied.json()["fields"]) == len(locked.json()["fields"])
+    assert copied.json()["recipients"] == locked.json()["recipients"]
+    copy_id = copied.json()["id"]
+    assert copy_id != fid
+    copy_subs = client.get(f"/api/v1/forms/{copy_id}/submissions", headers=headers)
+    assert copy_subs.status_code == 200
+    assert copy_subs.json() == []
+
+    # Archive with answered data kept under Archive package.
+    archived = client.post(
+        f"/api/v1/forms/{fid}/archive",
+        headers=headers,
+        json={"keep_answers": True},
+    )
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["status"] == "archived"
+    assert archived.json()["archived"] is True
+    assert archived.json()["archive_keep_answers"] is True
+    assert archived.json()["locked"] is True
+    assert archived.json()["share_url"] is None
+    # Public fill must stop.
+    assert client.get(f"/api/v1/public/forms/{token}").status_code == 404
+    # Still no edit/delete on archived locked form.
+    assert (
+        client.put(
+            f"/api/v1/forms/{fid}",
+            headers=headers,
+            json={"name": "Nope", "fields": [], "recipients": []},
+        ).status_code
+        == 409
+    )
+    assert client.delete(f"/api/v1/forms/{fid}", headers=headers).status_code == 409
+    answered_arch = client.get(f"/api/v1/forms/{fid}/answered", headers=headers)
+    assert answered_arch.status_code == 200
+    assert answered_arch.json()["folder"]["kind"] == "archive"
+    assert "Archive" in answered_arch.json()["folder"]["name"]
+
+    # Unarchive restores draft; still locked while submissions exist.
+    unarchived = client.post(f"/api/v1/forms/{fid}/unarchive", headers=headers)
+    assert unarchived.status_code == 200, unarchived.text
+    assert unarchived.json()["status"] == "draft"
+    assert unarchived.json()["archived"] is False
+    assert unarchived.json()["locked"] is True
+
+    # Archive form-only: answers remain in answered folder / documents.
+    archived_only = client.post(
+        f"/api/v1/forms/{fid}/archive",
+        headers=headers,
+        json={"keep_answers": False},
+    )
+    assert archived_only.status_code == 200, archived_only.text
+    assert archived_only.json()["archive_keep_answers"] is False
+    answered_only = client.get(f"/api/v1/forms/{fid}/answered", headers=headers)
+    assert answered_only.status_code == 200
+    assert answered_only.json()["folder"]["kind"] == "answered"
+    assert len(answered_only.json()["submissions"]) >= 1
+    assert answered_only.json()["submissions"][0]["document_id"]
+
 
 def test_n8n_export_and_connectors(client):
     headers = auth_headers(client)

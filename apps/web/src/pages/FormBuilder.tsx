@@ -50,7 +50,9 @@ export default function FormBuilder() {
   const [busy, setBusy] = useState(false);
   const [thread, setThread] = useState<ChatMsg[]>([]);
   const [locked, setLocked] = useState(false);
+  const [archived, setArchived] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
 
@@ -79,13 +81,16 @@ export default function FormBuilder() {
       setRecipientsText((f.recipients || []).join(", "));
       setFormId(f.id);
       setLocked(!!f.locked);
+      setArchived(!!f.archived);
       setSubmissionCount(f.submission_count || 0);
       if (f.share_url) setShare(f.share_url);
     });
   }, [id]);
 
+  const frozen = locked || archived;
+
   const move = (from: number, to: number) => {
-    if (locked) return;
+    if (frozen) return;
     if (to < 0 || to >= fields.length) return;
     const next = fields.slice();
     const [item] = next.splice(from, 1);
@@ -95,13 +100,13 @@ export default function FormBuilder() {
   };
 
   const add = (type: string) => {
-    if (locked) return;
+    if (frozen) return;
     setFields([...fields, { id: nid(), type, label: type === "heading" ? "Section" : "New field", required: type === "signature", options: type === "dropdown" ? ["A", "B"] : [] }]);
     setSel(fields.length);
   };
 
   const toggleDeskUser = (email: string) => {
-    if (locked) return;
+    if (frozen) return;
     const current = new Set(recipients);
     const key = email.toLowerCase();
     if (current.has(key)) current.delete(key);
@@ -110,8 +115,8 @@ export default function FormBuilder() {
   };
 
   const persist = async () => {
-    if (locked) {
-      throw new Error("Form is locked after the first answer");
+    if (frozen) {
+      throw new Error(archived ? "Form is archived" : "Form is locked after the first answer");
     }
     const body = { name, topic: "", description: prompt, language, fields, recipients };
     const f = formId ? await FormsAPI.update(formId, body) : await FormsAPI.create(body);
@@ -180,8 +185,8 @@ export default function FormBuilder() {
               className="ghost-title"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={locked}
-              readOnly={locked}
+              disabled={frozen}
+              readOnly={frozen}
             />
             {locked && (
               <p className="muted" style={{ marginTop: 4 }}>
@@ -189,6 +194,22 @@ export default function FormBuilder() {
                   Locked · {submissionCount} answer{submissionCount === 1 ? "" : "s"}
                 </span>{" "}
                 Definition frozen after the first submission.
+                {archived && (
+                  <>
+                    {" "}
+                    <span className="pill" data-demo="archived-badge">
+                      Archived
+                    </span>
+                  </>
+                )}
+              </p>
+            )}
+            {!locked && archived && (
+              <p className="muted" style={{ marginTop: 4 }}>
+                <span className="pill" data-demo="archived-badge">
+                  Archived
+                </span>{" "}
+                Copy to a new form or unarchive to edit.
               </p>
             )}
           </div>
@@ -199,20 +220,59 @@ export default function FormBuilder() {
               Answered folder
             </button>
           )}
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={locked}>
+          {formId && (
+            <button
+              className="btn"
+              data-demo="copy-form"
+              onClick={async () => {
+                try {
+                  const copy = await FormsAPI.copy(formId);
+                  setMsg(`Copied to new unlocked form: ${copy.name}`);
+                  nav(`/app/forms/${copy.id}`);
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Copy to new form
+            </button>
+          )}
+          {formId && !archived && (
+            <button className="btn" data-demo="archive-form" onClick={() => setArchiveOpen(true)}>
+              Archive
+            </button>
+          )}
+          {formId && archived && (
+            <button
+              className="btn"
+              data-demo="unarchive-form"
+              onClick={async () => {
+                try {
+                  const r = await FormsAPI.unarchive(formId);
+                  setArchived(!!r.archived);
+                  setMsg("Unarchived as draft");
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Unarchive
+            </button>
+          )}
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={frozen}>
             <option value="en">English</option>
             <option value="he">עברית</option>
             <option value="ar">العربية</option>
             <option value="es">Español</option>
             <option value="fr">Français</option>
           </select>
-          <button className="btn" onClick={save} disabled={locked}>
+          <button className="btn" onClick={save} disabled={frozen}>
             Save
           </button>
           <button
             className="btn primary"
             data-demo="publish"
-            disabled={locked}
+            disabled={frozen}
             onClick={async () => {
               try {
                 const saved = await persist();
@@ -233,15 +293,58 @@ export default function FormBuilder() {
           </button>
         </div>
       </div>
+      {archiveOpen && formId && (
+        <div className="card archive-panel" data-demo="archive-panel" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Archive form</h3>
+          <p className="muted">Locked definitions cannot be edited or deleted — archive or copy instead.</p>
+          <div className="row-actions">
+            <button
+              className="btn primary"
+              data-demo="archive-keep"
+              onClick={async () => {
+                try {
+                  const r = await FormsAPI.archive(formId, true);
+                  setArchived(!!r.archived);
+                  setArchiveOpen(false);
+                  setMsg("Archived with answered data");
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Keep answered data
+            </button>
+            <button
+              className="btn"
+              data-demo="archive-form-only"
+              onClick={async () => {
+                try {
+                  const r = await FormsAPI.archive(formId, false);
+                  setArchived(!!r.archived);
+                  setArchiveOpen(false);
+                  setMsg("Archived form only — answers stay in Answered folder / documents");
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Archive form only (answers stay in Answered folder / documents)
+            </button>
+            <button className="btn ghost" onClick={() => setArchiveOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="chatbar">
         <input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !locked && compose()}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !frozen && compose()}
           placeholder="Tell the desk what this form is for…"
-          disabled={locked}
+          disabled={frozen}
         />
-        <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy || locked}>
+        <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy || frozen}>
           {busy ? "Listening…" : "Draft with chat"}
         </button>
       </div>
@@ -284,11 +387,11 @@ export default function FormBuilder() {
             onChange={(e) => setRecipientsText(e.target.value)}
             placeholder={t(language, "recipientsPlaceholder")}
             aria-label={t(language, "sendTo")}
-            disabled={locked}
-            readOnly={locked}
+            disabled={frozen}
+            readOnly={frozen}
           />
         </div>
-        {deskUsers.length > 0 && !locked && (
+        {deskUsers.length > 0 && !frozen && (
           <div className="recipient-picks">
             <div className="muted">{t(language, "deskPeople")}</div>
             <div className="recipient-chips">
@@ -319,7 +422,7 @@ export default function FormBuilder() {
         <div className="card palette">
           <div className="eyebrow">Fields</div>
           {TYPES.map((ty) => (
-            <button key={ty} className="btn" onClick={() => add(ty)} disabled={locked}>
+            <button key={ty} className="btn" onClick={() => add(ty)} disabled={frozen}>
               {ty}
             </button>
           ))}
@@ -329,12 +432,12 @@ export default function FormBuilder() {
             <div
               key={f.id}
               className={`paper-row ${sel === i ? "on" : ""}`}
-              draggable={!locked}
-              onDragStart={(e) => !locked && e.dataTransfer.setData("text/plain", String(i))}
+              draggable={!frozen}
+              onDragStart={(e) => !frozen && e.dataTransfer.setData("text/plain", String(i))}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                if (locked) return;
+                if (frozen) return;
                 move(Number(e.dataTransfer.getData("text/plain")), i);
               }}
               onClick={() => setSel(i)}
@@ -346,10 +449,10 @@ export default function FormBuilder() {
                 {f.required && <span className="pill bad">required</span>}
               </div>
               <div>
-                <button className="btn" onClick={() => move(i, i - 1)} disabled={locked}>
+                <button className="btn" onClick={() => move(i, i - 1)} disabled={frozen}>
                   ↑
                 </button>
-                <button className="btn" onClick={() => move(i, i + 1)} disabled={locked}>
+                <button className="btn" onClick={() => move(i, i + 1)} disabled={frozen}>
                   ↓
                 </button>
               </div>
@@ -365,8 +468,8 @@ export default function FormBuilder() {
                 <label>Label</label>
                 <input
                   value={selected.label}
-                  disabled={locked}
-                  readOnly={locked}
+                  disabled={frozen}
+                  readOnly={frozen}
                   onChange={(e) => {
                     const next = fields.slice();
                     next[sel] = { ...selected, label: e.target.value };
@@ -378,7 +481,7 @@ export default function FormBuilder() {
                 <input
                   type="checkbox"
                   checked={!!selected.required}
-                  disabled={locked}
+                  disabled={frozen}
                   onChange={(e) => {
                     const next = fields.slice();
                     next[sel] = { ...selected, required: e.target.checked };
@@ -392,8 +495,8 @@ export default function FormBuilder() {
                   <label>Choices (comma)</label>
                   <input
                     value={(selected.options || []).join(",")}
-                    disabled={locked}
-                    readOnly={locked}
+                    disabled={frozen}
+                    readOnly={frozen}
                     onChange={(e) => {
                       const next = fields.slice();
                       next[sel] = { ...selected, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) };

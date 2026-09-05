@@ -14,6 +14,10 @@ def ensure_sqlite_columns(engine) -> None:
         form_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(forms)"))]
         if form_cols and "answered_folder_id" not in form_cols:
             conn.execute(text("ALTER TABLE forms ADD COLUMN answered_folder_id INTEGER"))
+        if form_cols and "archived_at" not in form_cols:
+            conn.execute(text("ALTER TABLE forms ADD COLUMN archived_at DATETIME"))
+        if form_cols and "archive_keep_answers" not in form_cols:
+            conn.execute(text("ALTER TABLE forms ADD COLUMN archive_keep_answers BOOLEAN"))
 
         sub_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(form_submissions)"))]
         if sub_cols and "actions" not in sub_cols:

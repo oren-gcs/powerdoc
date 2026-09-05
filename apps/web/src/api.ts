@@ -114,6 +114,10 @@ export const FormsAPI = {
   create: (body: object) => api("/api/v1/forms", { method: "POST", body: JSON.stringify(body) }),
   update: (id: number, body: object) => api(`/api/v1/forms/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   remove: (id: number) => api(`/api/v1/forms/${id}`, { method: "DELETE" }),
+  copy: (id: number) => api(`/api/v1/forms/${id}/copy`, { method: "POST" }),
+  archive: (id: number, keep_answers: boolean) =>
+    api(`/api/v1/forms/${id}/archive`, { method: "POST", body: JSON.stringify({ keep_answers }) }),
+  unarchive: (id: number) => api(`/api/v1/forms/${id}/unarchive`, { method: "POST" }),
   compose: (body: object) => api("/api/v1/forms/compose", { method: "POST", body: JSON.stringify(body) }),
   publish: (id: number) => api(`/api/v1/forms/${id}/publish`, { method: "POST" }),
   share: (id: number, body: object) => api(`/api/v1/forms/${id}/share`, { method: "POST", body: JSON.stringify(body) }),

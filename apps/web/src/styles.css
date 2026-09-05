@@ -650,6 +650,13 @@ html[dir=rtl] .form-exit-arrow {
 }
 
 .answered-actions { margin-bottom: 8px; }
+.archive-panel {
+  margin-bottom: 16px;
+  border: 1px solid rgba(244, 239, 228, 0.14);
+  background: linear-gradient(160deg, rgba(42, 48, 58, 0.9), rgba(28, 32, 40, 0.95));
+}
+.archive-panel h3 { font-family: var(--display); font-weight: 500; }
+
 .answered-log {
   margin-top: 10px;
   padding: 12px;

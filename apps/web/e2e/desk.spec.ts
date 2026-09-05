@@ -46,8 +46,11 @@ test.describe("desk", () => {
       await expect(page).toHaveURL(/\/app\/forms\/\d+\/answered/);
       await expect(page.locator("[data-demo=answered-title]")).toBeVisible();
       await expect(page.locator("[data-demo=answered-list]")).toBeVisible();
+      await expect(page.locator("[data-demo=copy-form]")).toBeVisible();
+      await expect(page.locator("[data-demo=archive-form]")).toBeVisible();
     } else {
       await expect(edit).toBeVisible();
+      await expect(page.locator("[data-demo=copy-form]").first()).toBeVisible();
     }
   });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { FormsAPI, WfAPI } from "../api";
 import FormExit from "../components/FormExit";
 
@@ -14,6 +14,7 @@ const ACTIONS: { key: string; label: string }[] = [
 
 export default function FormAnswered() {
   const { id } = useParams();
+  const nav = useNavigate();
   const formId = Number(id);
   const [form, setForm] = useState<any>(null);
   const [folder, setFolder] = useState<any>(null);
@@ -23,6 +24,7 @@ export default function FormAnswered() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string>("");
   const [open, setOpen] = useState<number | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const load = useCallback(() => {
     if (!formId) return;
@@ -83,9 +85,52 @@ export default function FormAnswered() {
                 · <span className="pill warn" data-demo="locked-badge">Locked</span>
               </>
             ) : null}
+            {form.archived ? (
+              <>
+                {" "}
+                · <span className="pill" data-demo="archived-badge">Archived</span>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="row-actions">
+          <button
+            className="btn"
+            data-demo="copy-form"
+            onClick={async () => {
+              try {
+                const copy = await FormsAPI.copy(formId);
+                setMsg(`Copied to new unlocked form: ${copy.name}`);
+                nav(`/app/forms/${copy.id}`);
+              } catch (e: any) {
+                setMsg(e.message);
+              }
+            }}
+          >
+            Copy to new form
+          </button>
+          {!form.archived && (
+            <button className="btn" data-demo="archive-form" onClick={() => setArchiveOpen(true)}>
+              Archive
+            </button>
+          )}
+          {form.archived && (
+            <button
+              className="btn"
+              data-demo="unarchive-form"
+              onClick={async () => {
+                try {
+                  await FormsAPI.unarchive(formId);
+                  setMsg("Unarchived as draft");
+                  load();
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Unarchive
+            </button>
+          )}
           <Link className="btn" to={`/app/forms/${formId}`}>
             Form definition
           </Link>
@@ -104,6 +149,49 @@ export default function FormAnswered() {
           )}
         </div>
       </div>
+      {archiveOpen && (
+        <div className="card archive-panel" data-demo="archive-panel">
+          <h3 style={{ marginTop: 0 }}>Archive form</h3>
+          <p className="muted">Definition stays frozen. Choose how answered data is packaged.</p>
+          <div className="row-actions">
+            <button
+              className="btn primary"
+              data-demo="archive-keep"
+              onClick={async () => {
+                try {
+                  await FormsAPI.archive(formId, true);
+                  setArchiveOpen(false);
+                  setMsg("Archived with answered data");
+                  load();
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Keep answered data
+            </button>
+            <button
+              className="btn"
+              data-demo="archive-form-only"
+              onClick={async () => {
+                try {
+                  await FormsAPI.archive(formId, false);
+                  setArchiveOpen(false);
+                  setMsg("Archived form only — answers stay in Answered folder / documents");
+                  load();
+                } catch (e: any) {
+                  setMsg(e.message);
+                }
+              }}
+            >
+              Archive form only (answers stay in Answered folder / documents)
+            </button>
+            <button className="btn ghost" onClick={() => setArchiveOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {msg && <p className="pill ok" data-demo="answered-msg">{msg}</p>}
       <div className="card" data-demo="answered-list">
         {!rows.length && <p className="muted">Answers will land here after someone fills the live form.</p>}

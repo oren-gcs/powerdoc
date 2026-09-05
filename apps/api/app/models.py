@@ -308,6 +308,8 @@ class Form(Base):
     automation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     answered_folder_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     share_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archive_keep_answers: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
