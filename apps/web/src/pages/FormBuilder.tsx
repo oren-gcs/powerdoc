@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FormsAPI } from "../api";
+import FormExit from "../components/FormExit";
 
 const TYPES = ["text", "textarea", "number", "date", "email", "phone", "dropdown", "radio", "yesno", "signature", "heading"];
 
@@ -114,6 +115,7 @@ export default function FormBuilder() {
     <div className="builder">
       <div className="topbar">
         <div>
+          <FormExit fallback="/app/forms" variant="on-dark" />
           <div className="eyebrow">Anyone can build this</div>
           <input className="ghost-title" value={name} onChange={(e) => setName(e.target.value)} />
         </div>

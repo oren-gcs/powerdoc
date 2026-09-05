@@ -17,12 +17,22 @@ test.describe("desk", () => {
 
   test("creates a live form from chat", async ({ page }) => {
     await openTab(page, "/app/forms/new");
+    await expect(page.locator("[data-demo=form-exit]")).toBeVisible();
+    await expect(page.locator("[data-demo=form-exit-back]")).toBeVisible();
+    await expect(page.locator("[data-demo=form-exit-cancel]")).toBeVisible();
     await page.locator("[data-demo=compose]").click();
     await expect(page.locator("[data-demo=chat-reply]")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("[data-demo=chat-reply] .bubble.assistant")).toContainText(/I drafted|understood|Connectors/i);
     await expect(page.locator(".paper-row").first()).toBeVisible({ timeout: 15_000 });
     await page.locator("[data-demo=publish]").click();
     await expect(page.getByText(/In the automation folder — form is alive|Alive:/i)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("form builder cancel returns to forms list", async ({ page }) => {
+    await openTab(page, "/app/forms/new");
+    await page.locator("[data-demo=form-exit-cancel]").click();
+    await expect(page).toHaveURL(/\/app\/forms\/?$/);
+    await expect(page.getByRole("heading", { name: "Forms" })).toBeVisible();
   });
 
   test("syncs Google Drive, Microsoft 365, and local DB", async ({ page }) => {

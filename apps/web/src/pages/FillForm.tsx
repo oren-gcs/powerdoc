@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { FormsAPI } from "../api";
+import FormExit from "../components/FormExit";
 import { dirFor } from "../i18n";
 
 export default function FillForm() {
@@ -83,6 +84,7 @@ export default function FillForm() {
     return (
       <div className="fill-wrap">
         <div className="paper fill-sheet">
+          <FormExit fallback="/" variant="on-paper" />
           <h1 className="mark">Received</h1>
           <p>Logged as submission #{done.submission_id} and written into the desk database.</p>
         </div>
@@ -94,6 +96,7 @@ export default function FillForm() {
   return (
     <div className="fill-wrap">
       <form className="paper fill-sheet" onSubmit={submit}>
+        <FormExit fallback="/" variant="on-paper" />
         <div className="eyebrow">DocFlow</div>
         <h1 className="mark">{form.name}</h1>
         <p className="muted">{form.description}</p>

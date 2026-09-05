@@ -409,6 +409,81 @@ pre.ocr {
   padding: 40px 16px;
 }
 .fill-sheet { width: min(640px, 100%); }
+
+.form-exit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.form-exit-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(244, 239, 228, 0.04);
+  color: var(--brass);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.form-exit-back:hover {
+  border-color: var(--brass);
+  color: var(--brass-2);
+}
+.form-exit-arrow {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-inline-start: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  margin-inline-start: 3px;
+}
+html[dir=rtl] .form-exit-arrow {
+  transform: rotate(-135deg);
+  margin-inline-start: 0;
+  margin-inline-end: 3px;
+}
+.builder .topbar > div:first-child {
+  min-width: 0;
+}
+.form-exit--on-dark {
+  justify-content: flex-start;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.form-exit--on-dark .form-exit-cancel {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.form-exit--on-paper .form-exit-back {
+  background: rgba(26, 20, 8, 0.04);
+  border-color: rgba(26, 20, 8, 0.14);
+  color: #8a6a2e;
+}
+.form-exit--on-paper .form-exit-back:hover {
+  border-color: #c9a45a;
+  color: #6b5220;
+}
+.form-exit--on-paper .form-exit-cancel {
+  color: #1a1408;
+  border-color: rgba(26, 20, 8, 0.18);
+  background: rgba(26, 20, 8, 0.03);
+}
+.form-exit--on-paper .form-exit-cancel:hover {
+  border-color: #c9a45a;
+  color: #6b5220;
+}
+@media (max-width: 640px) {
+  .builder .topbar {
+    flex-wrap: wrap;
+  }
+}
 .sign-pad {
   width: 70%;
   height: 98px;
