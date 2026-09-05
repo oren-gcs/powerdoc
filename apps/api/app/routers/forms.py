@@ -7,6 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user, require
+from app.engine.form_digest import (
+    ensure_answered_folder,
+    form_is_locked,
+    form_submission_count,
+    link_submission_document,
+    run_submission_action,
+)
 from app.engine.formgen import compose_from_prompt, fields_from_chunks, relevant_chunks
 from app.engine.orchestrator import match_automation, process_document
 from app.engine.rag import retrieve, upsert_chunk
@@ -17,6 +24,7 @@ from app.models import (
     Connector,
     Document,
     Folder,
+    FolderItem,
     Form,
     FormShare,
     FormSubmission,
@@ -62,6 +70,19 @@ class SubmitIn(BaseModel):
     answers: dict
     signature: str | None = None
     locale: str = "en"
+
+
+class DigestIn(BaseModel):
+    action: str = "digest"
+    workflow_id: int | None = None
+
+
+def _require_unlocked(db: Session, f: Form) -> None:
+    if form_is_locked(db, f):
+        raise HTTPException(
+            status_code=409,
+            detail="Form is locked after the first answer. Definition and recipients cannot be changed; open Answered to work submissions.",
+        )
 
 
 def _clean_recipients(raw: list[str] | None) -> list[str]:
@@ -112,16 +133,40 @@ def _out(f: Form, db: Session | None = None) -> dict:
         "fields": (f.definition or {}).get("fields") or [],
         "recipients": _form_recipients(f),
         "folder_id": f.folder_id,
+        "answered_folder_id": f.answered_folder_id,
         "layer_id": f.layer_id,
         "workflow_id": f.workflow_id,
         "automation_id": f.automation_id,
         "share_token": f.share_token,
         "share_url": f"/f/{f.share_token}" if f.share_token else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
+        "locked": False,
+        "submission_count": 0,
     }
     if db is not None:
+        count = form_submission_count(db, f.id)
+        payload["submission_count"] = count
+        payload["locked"] = count > 0
         payload["sends_to"] = _sends_to(db, f)
     return payload
+
+
+def _submission_out(db: Session, s: FormSubmission) -> dict:
+    doc = db.get(Document, s.document_id) if s.document_id else None
+    return {
+        "id": s.id,
+        "submitter_name": s.submitter_name,
+        "submitter_email": s.submitter_email,
+        "answers": s.answers,
+        "status": s.status,
+        "document_id": s.document_id,
+        "document_filename": doc.filename if doc else None,
+        "document_status": doc.status if doc else None,
+        "document_url": f"/app/documents/{doc.id}" if doc else None,
+        "locale": s.locale,
+        "actions": s.actions or [],
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
 
 
 def _notify_recipients(
@@ -227,6 +272,7 @@ def update_form(form_id: int, body: FormIn, user: User = Depends(require("operat
     f = db.get(Form, form_id)
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
+    _require_unlocked(db, f)
     f.name = body.name
     f.topic = body.topic
     f.description = body.description
@@ -237,6 +283,22 @@ def update_form(form_id: int, body: FormIn, user: User = Depends(require("operat
     f.workflow_id = body.workflow_id
     db.commit()
     return _out(f, db)
+
+
+@router.delete("/{form_id}")
+def delete_form(form_id: int, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    if form_is_locked(db, f):
+        raise HTTPException(
+            status_code=409,
+            detail="Form is locked after the first answer and cannot be deleted.",
+        )
+    db.query(FormShare).filter(FormShare.form_id == form_id).delete()
+    db.delete(f)
+    db.commit()
+    return {"ok": True, "deleted": form_id}
 
 
 @router.post("/{form_id}/publish")
@@ -292,13 +354,23 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
         raise HTTPException(404, "Form not found")
     if f.status != "live":
         raise HTTPException(400, "Publish the form first")
+    if form_is_locked(db, f) and body.recipients:
+        # Locked forms keep their recipient list; re-notify existing only.
+        requested = _clean_recipients(body.recipients)
+        current = _form_recipients(f)
+        if requested and set(requested) != set(current):
+            raise HTTPException(
+                status_code=409,
+                detail="Form is locked after the first answer; recipients cannot be changed.",
+            )
     recipients = _clean_recipients(body.recipients) or _form_recipients(f)
     if not recipients:
         raise HTTPException(400, "Add at least one recipient")
     # Persist chosen recipients on the form so the builder preview stays in sync.
-    definition = dict(f.definition or {})
-    definition["recipients"] = recipients
-    f.definition = definition
+    if not form_is_locked(db, f):
+        definition = dict(f.definition or {})
+        definition["recipients"] = recipients
+        f.definition = definition
     sent = _notify_recipients(
         db,
         f,
@@ -317,19 +389,85 @@ def submissions(form_id: int, user: User = Depends(current_user), db: Session = 
     if not f or f.tenant_id != user.tenant_id:
         raise HTTPException(404, "Form not found")
     rows = db.query(FormSubmission).filter(FormSubmission.form_id == form_id).order_by(FormSubmission.id.desc()).all()
-    return [
-        {
-            "id": s.id,
-            "submitter_name": s.submitter_name,
-            "submitter_email": s.submitter_email,
-            "answers": s.answers,
-            "status": s.status,
-            "document_id": s.document_id,
-            "locale": s.locale,
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-        }
-        for s in rows
-    ]
+    return [_submission_out(db, s) for s in rows]
+
+
+@router.get("/{form_id}/answered")
+def answered_folder(form_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    folder = None
+    if form_submission_count(db, f.id):
+        folder = ensure_answered_folder(db, f)
+        db.commit()
+        db.refresh(f)
+    rows = db.query(FormSubmission).filter(FormSubmission.form_id == form_id).order_by(FormSubmission.id.desc()).all()
+    items = []
+    if folder:
+        items = (
+            db.query(FolderItem)
+            .filter(FolderItem.folder_id == folder.id)
+            .order_by(FolderItem.id.desc())
+            .all()
+        )
+    return {
+        "form": _out(f, db),
+        "folder": (
+            {"id": folder.id, "name": folder.name, "kind": folder.kind, "parent_id": folder.parent_id}
+            if folder
+            else None
+        ),
+        "items": [{"id": i.id, "resource_type": i.resource_type, "resource_id": i.resource_id} for i in items],
+        "submissions": [_submission_out(db, s) for s in rows],
+    }
+
+
+@router.post("/{form_id}/submissions/{submission_id}/digest")
+def digest_submission(
+    form_id: int,
+    submission_id: int,
+    body: DigestIn,
+    user: User = Depends(require("operator")),
+    db: Session = Depends(get_db),
+):
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    sub = db.get(FormSubmission, submission_id)
+    if not sub or sub.form_id != form_id or sub.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Submission not found")
+    try:
+        return run_submission_action(db, f, sub, body.action, user, workflow_id=body.workflow_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/{form_id}/submissions/{submission_id}/ingest")
+def ingest_submission(
+    form_id: int,
+    submission_id: int,
+    body: DigestIn | None = None,
+    user: User = Depends(require("operator")),
+    db: Session = Depends(get_db),
+):
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    sub = db.get(FormSubmission, submission_id)
+    if not sub or sub.form_id != form_id or sub.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Submission not found")
+    try:
+        return run_submission_action(
+            db,
+            f,
+            sub,
+            "ingest",
+            user,
+            workflow_id=(body.workflow_id if body else None),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
@@ -376,9 +514,11 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
         locale=body.locale or f.language,
         document_id=doc.id,
         status="received",
+        actions=[],
     )
     db.add(sub)
     db.flush()
+    link_submission_document(db, f, sub)
     db.add(RecordRow(tenant_id=f.tenant_id, form_id=f.id, submission_id=sub.id, payload=body.answers))
     upsert_chunk(db, f.tenant_id, "form_submission", str(sub.id), f.name, rendered.decode(), f.language)
     db.add(Activity(tenant_id=f.tenant_id, user_id=owner.id if owner else None, activity_type="form_submitted", details={"form_id": f.id, "submission_id": sub.id}))
@@ -390,7 +530,14 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
         process_document(db, doc, enable_ocr=False, enable_workflow=True, workflow_id=auto.workflow_id)
     sub.status = "implemented"
     db.commit()
-    return {"submission_id": sub.id, "document_id": doc.id, "status": sub.status, "pipeline": pipeline.get("status")}
+    return {
+        "submission_id": sub.id,
+        "document_id": doc.id,
+        "status": sub.status,
+        "pipeline": pipeline.get("status"),
+        "answered_folder_id": f.answered_folder_id,
+        "locked": True,
+    }
 
 
 @public.get("/{token}")

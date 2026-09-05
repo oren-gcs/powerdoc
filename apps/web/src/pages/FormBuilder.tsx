@@ -49,6 +49,8 @@ export default function FormBuilder() {
   const [share, setShare] = useState("");
   const [busy, setBusy] = useState(false);
   const [thread, setThread] = useState<ChatMsg[]>([]);
+  const [locked, setLocked] = useState(false);
+  const [submissionCount, setSubmissionCount] = useState(0);
 
   const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
 
@@ -76,10 +78,14 @@ export default function FormBuilder() {
       setFields(f.fields || []);
       setRecipientsText((f.recipients || []).join(", "));
       setFormId(f.id);
+      setLocked(!!f.locked);
+      setSubmissionCount(f.submission_count || 0);
+      if (f.share_url) setShare(f.share_url);
     });
   }, [id]);
 
   const move = (from: number, to: number) => {
+    if (locked) return;
     if (to < 0 || to >= fields.length) return;
     const next = fields.slice();
     const [item] = next.splice(from, 1);
@@ -89,11 +95,13 @@ export default function FormBuilder() {
   };
 
   const add = (type: string) => {
+    if (locked) return;
     setFields([...fields, { id: nid(), type, label: type === "heading" ? "Section" : "New field", required: type === "signature", options: type === "dropdown" ? ["A", "B"] : [] }]);
     setSel(fields.length);
   };
 
   const toggleDeskUser = (email: string) => {
+    if (locked) return;
     const current = new Set(recipients);
     const key = email.toLowerCase();
     if (current.has(key)) current.delete(key);
@@ -102,10 +110,15 @@ export default function FormBuilder() {
   };
 
   const persist = async () => {
+    if (locked) {
+      throw new Error("Form is locked after the first answer");
+    }
     const body = { name, topic: "", description: prompt, language, fields, recipients };
     const f = formId ? await FormsAPI.update(formId, body) : await FormsAPI.create(body);
     setFormId(f.id);
     setRecipientsText((f.recipients || []).join(", "));
+    setLocked(!!f.locked);
+    setSubmissionCount(f.submission_count || 0);
     setMsg(t(language, "formSaved"));
     if (!id) nav(`/app/forms/${f.id}`, { replace: true });
     return f;
@@ -163,23 +176,43 @@ export default function FormBuilder() {
           <FormExit fallback="/app/forms" variant="on-dark" />
           <div>
             <div className="eyebrow">Anyone can build this</div>
-            <input className="ghost-title" value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              className="ghost-title"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={locked}
+              readOnly={locked}
+            />
+            {locked && (
+              <p className="muted" style={{ marginTop: 4 }}>
+                <span className="pill warn" data-demo="locked-badge">
+                  Locked · {submissionCount} answer{submissionCount === 1 ? "" : "s"}
+                </span>{" "}
+                Definition frozen after the first submission.
+              </p>
+            )}
           </div>
         </div>
         <div className="row-actions">
-          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+          {locked && formId && (
+            <button className="btn primary" data-demo="open-answered" onClick={() => nav(`/app/forms/${formId}/answered`)}>
+              Answered folder
+            </button>
+          )}
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={locked}>
             <option value="en">English</option>
             <option value="he">עברית</option>
             <option value="ar">العربية</option>
             <option value="es">Español</option>
             <option value="fr">Français</option>
           </select>
-          <button className="btn" onClick={save}>
+          <button className="btn" onClick={save} disabled={locked}>
             Save
           </button>
           <button
             className="btn primary"
             data-demo="publish"
+            disabled={locked}
             onClick={async () => {
               try {
                 const saved = await persist();
@@ -204,10 +237,11 @@ export default function FormBuilder() {
         <input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && compose()}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !locked && compose()}
           placeholder="Tell the desk what this form is for…"
+          disabled={locked}
         />
-        <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy}>
+        <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy || locked}>
           {busy ? "Listening…" : "Draft with chat"}
         </button>
       </div>
@@ -250,9 +284,11 @@ export default function FormBuilder() {
             onChange={(e) => setRecipientsText(e.target.value)}
             placeholder={t(language, "recipientsPlaceholder")}
             aria-label={t(language, "sendTo")}
+            disabled={locked}
+            readOnly={locked}
           />
         </div>
-        {deskUsers.length > 0 && (
+        {deskUsers.length > 0 && !locked && (
           <div className="recipient-picks">
             <div className="muted">{t(language, "deskPeople")}</div>
             <div className="recipient-chips">
@@ -283,7 +319,7 @@ export default function FormBuilder() {
         <div className="card palette">
           <div className="eyebrow">Fields</div>
           {TYPES.map((ty) => (
-            <button key={ty} className="btn" onClick={() => add(ty)}>
+            <button key={ty} className="btn" onClick={() => add(ty)} disabled={locked}>
               {ty}
             </button>
           ))}
@@ -293,11 +329,12 @@ export default function FormBuilder() {
             <div
               key={f.id}
               className={`paper-row ${sel === i ? "on" : ""}`}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))}
+              draggable={!locked}
+              onDragStart={(e) => !locked && e.dataTransfer.setData("text/plain", String(i))}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
+                if (locked) return;
                 move(Number(e.dataTransfer.getData("text/plain")), i);
               }}
               onClick={() => setSel(i)}
@@ -309,10 +346,10 @@ export default function FormBuilder() {
                 {f.required && <span className="pill bad">required</span>}
               </div>
               <div>
-                <button className="btn" onClick={() => move(i, i - 1)}>
+                <button className="btn" onClick={() => move(i, i - 1)} disabled={locked}>
                   ↑
                 </button>
-                <button className="btn" onClick={() => move(i, i + 1)}>
+                <button className="btn" onClick={() => move(i, i + 1)} disabled={locked}>
                   ↓
                 </button>
               </div>
@@ -328,6 +365,8 @@ export default function FormBuilder() {
                 <label>Label</label>
                 <input
                   value={selected.label}
+                  disabled={locked}
+                  readOnly={locked}
                   onChange={(e) => {
                     const next = fields.slice();
                     next[sel] = { ...selected, label: e.target.value };
@@ -339,6 +378,7 @@ export default function FormBuilder() {
                 <input
                   type="checkbox"
                   checked={!!selected.required}
+                  disabled={locked}
                   onChange={(e) => {
                     const next = fields.slice();
                     next[sel] = { ...selected, required: e.target.checked };
@@ -352,6 +392,8 @@ export default function FormBuilder() {
                   <label>Choices (comma)</label>
                   <input
                     value={(selected.options || []).join(",")}
+                    disabled={locked}
+                    readOnly={locked}
                     onChange={(e) => {
                       const next = fields.slice();
                       next[sel] = { ...selected, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) };

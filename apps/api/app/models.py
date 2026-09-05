@@ -306,6 +306,7 @@ class Form(Base):
     definition: Mapped[dict] = mapped_column(JSON, default=dict)
     workflow_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     automation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    answered_folder_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     share_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -335,6 +336,7 @@ class FormSubmission(Base):
     locale: Mapped[str] = mapped_column(String(16), default="en")
     document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="received")
+    actions: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

@@ -205,9 +205,61 @@ def test_form_compose_publish_and_public_submit(client):
     )
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["status"] == "implemented"
+    assert submitted.json()["locked"] is True
+    assert submitted.json()["answered_folder_id"]
     rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
     assert rows.status_code == 200
     assert rows.json()[0]["submitter_email"] == "lee@example.com"
+    assert rows.json()[0]["document_id"]
+    assert rows.json()[0]["document_filename"]
+
+    locked = client.get(f"/api/v1/forms/{fid}", headers=headers)
+    assert locked.status_code == 200
+    assert locked.json()["locked"] is True
+    assert locked.json()["submission_count"] >= 1
+    denied = client.put(
+        f"/api/v1/forms/{fid}",
+        headers=headers,
+        json={"name": "Hacked", "fields": [], "recipients": ["x@example.com"]},
+    )
+    assert denied.status_code == 409
+    deleted = client.delete(f"/api/v1/forms/{fid}", headers=headers)
+    assert deleted.status_code == 409
+    share_change = client.post(
+        f"/api/v1/forms/{fid}/share",
+        headers=headers,
+        json={"channel": "email", "recipients": ["intruder@example.com"]},
+    )
+    assert share_change.status_code == 409
+
+    sid = rows.json()[0]["id"]
+    answered = client.get(f"/api/v1/forms/{fid}/answered", headers=headers)
+    assert answered.status_code == 200
+    assert answered.json()["folder"]["kind"] == "answered"
+    assert answered.json()["submissions"][0]["id"] == sid
+
+    digest = client.post(
+        f"/api/v1/forms/{fid}/submissions/{sid}/digest",
+        headers=headers,
+        json={"action": "summarize"},
+    )
+    assert digest.status_code == 200, digest.text
+    assert digest.json()["action"] == "summarize"
+    assert digest.json()["entry"]["summary"]
+    insights = client.post(
+        f"/api/v1/forms/{fid}/submissions/{sid}/digest",
+        headers=headers,
+        json={"action": "insights"},
+    )
+    assert insights.status_code == 200, insights.text
+    assert insights.json()["action"] == "insights"
+    extract = client.post(
+        f"/api/v1/forms/{fid}/submissions/{sid}/digest",
+        headers=headers,
+        json={"action": "extract"},
+    )
+    assert extract.status_code == 200, extract.text
+    assert extract.json()["result"]["document_id"]
 
 
 def test_n8n_export_and_connectors(client):

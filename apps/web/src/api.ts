@@ -113,10 +113,22 @@ export const FormsAPI = {
   get: (id: number) => api(`/api/v1/forms/${id}`),
   create: (body: object) => api("/api/v1/forms", { method: "POST", body: JSON.stringify(body) }),
   update: (id: number, body: object) => api(`/api/v1/forms/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  remove: (id: number) => api(`/api/v1/forms/${id}`, { method: "DELETE" }),
   compose: (body: object) => api("/api/v1/forms/compose", { method: "POST", body: JSON.stringify(body) }),
   publish: (id: number) => api(`/api/v1/forms/${id}/publish`, { method: "POST" }),
   share: (id: number, body: object) => api(`/api/v1/forms/${id}/share`, { method: "POST", body: JSON.stringify(body) }),
   submissions: (id: number) => api(`/api/v1/forms/${id}/submissions`),
+  answered: (id: number) => api(`/api/v1/forms/${id}/answered`),
+  digest: (formId: number, submissionId: number, body: object) =>
+    api(`/api/v1/forms/${formId}/submissions/${submissionId}/digest`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  ingest: (formId: number, submissionId: number, body: object = {}) =>
+    api(`/api/v1/forms/${formId}/submissions/${submissionId}/ingest`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   publicGet: (token: string) => api(`/api/v1/public/forms/${token}`),
   publicSubmit: (token: string, body: object) =>
     api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: JSON.stringify(body) }),

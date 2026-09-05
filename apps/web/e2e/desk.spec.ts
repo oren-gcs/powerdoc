@@ -35,6 +35,22 @@ test.describe("desk", () => {
     await expect(page.getByRole("heading", { name: "Forms" })).toBeVisible();
   });
 
+  test("answered folder route renders for a form id", async ({ page }) => {
+    await openTab(page, "/app/forms");
+    await expect(page.getByRole("heading", { name: "Forms" })).toBeVisible();
+    // Locked forms expose Answered; draft forms still list Edit.
+    const answered = page.locator("[data-demo=open-answered]").first();
+    const edit = page.getByRole("link", { name: "Edit" }).first();
+    if (await answered.count()) {
+      await answered.click();
+      await expect(page).toHaveURL(/\/app\/forms\/\d+\/answered/);
+      await expect(page.locator("[data-demo=answered-title]")).toBeVisible();
+      await expect(page.locator("[data-demo=answered-list]")).toBeVisible();
+    } else {
+      await expect(edit).toBeVisible();
+    }
+  });
+
   test("syncs Google Drive, Microsoft 365, and local DB", async ({ page }) => {
     await openTab(page, "/app/connectors");
     await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();

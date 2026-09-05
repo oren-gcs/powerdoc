@@ -17,6 +17,7 @@ import Admin from "./pages/Admin";
 import Manage from "./pages/Manage";
 import Forms from "./pages/Forms";
 import FormBuilder from "./pages/FormBuilder";
+import FormAnswered from "./pages/FormAnswered";
 import FillForm from "./pages/FillForm";
 import Connectors from "./pages/Connectors";
 
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="documents/:id" element={<DocumentDetail />} />
         <Route path="forms" element={<Forms />} />
         <Route path="forms/new" element={<FormBuilder />} />
+        <Route path="forms/:id/answered" element={<FormAnswered />} />
         <Route path="forms/:id" element={<FormBuilder />} />
         <Route path="workflows" element={<Workflows />} />
         <Route path="automations" element={<Automations />} />

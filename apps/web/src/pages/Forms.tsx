@@ -37,14 +37,24 @@ export default function Forms() {
             {rows.map((f) => (
               <tr key={f.id}>
                 <td>
-                  <Link to={`/app/forms/${f.id}`}>{f.name}</Link>
+                  <Link to={f.locked ? `/app/forms/${f.id}/answered` : `/app/forms/${f.id}`}>{f.name}</Link>
+                  {f.locked && (
+                    <span className="pill warn" style={{ marginInlineStart: 8 }} data-demo="locked-badge">
+                      Locked · {f.submission_count}
+                    </span>
+                  )}
                 </td>
                 <td className="mono">{f.language}</td>
                 <td>
                   <span className={`pill ${f.status === "live" ? "ok" : ""}`}>{f.status}</span>
                 </td>
                 <td className="row-actions">
-                  {f.status !== "live" && (
+                  {f.locked && (
+                    <Link className="btn primary" to={`/app/forms/${f.id}/answered`} data-demo="open-answered">
+                      Answered
+                    </Link>
+                  )}
+                  {f.status !== "live" && !f.locked && (
                     <button
                       className="btn"
                       onClick={async () => {
@@ -60,6 +70,27 @@ export default function Forms() {
                     <a className="btn" href={f.share_url} target="_blank" rel="noreferrer">
                       Open link
                     </a>
+                  )}
+                  {!f.locked && (
+                    <Link className="btn" to={`/app/forms/${f.id}`}>
+                      Edit
+                    </Link>
+                  )}
+                  {!f.locked && (
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        try {
+                          await FormsAPI.remove(f.id);
+                          setMsg("Deleted");
+                          load();
+                        } catch (e: any) {
+                          setMsg(e.message);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
                   )}
                   {(f.recipients || []).length > 0 && (
                     <span className="muted" title={(f.recipients || []).join(", ")}>

@@ -648,3 +648,23 @@ html[dir=rtl] .form-exit-arrow {
   .hero-copy { padding: 32px 20px; }
   .workspace { padding: 20px; }
 }
+
+.answered-actions { margin-bottom: 8px; }
+.answered-log {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.22);
+  max-width: 520px;
+}
+.answered-log-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.answered-log-row:last-child { border-bottom: 0; }
+.answered-log-row p { margin: 6px 0 0; color: var(--fog); font-size: 14px; }
+button:disabled, input:disabled, select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
