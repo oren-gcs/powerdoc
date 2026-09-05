@@ -1,0 +1,6 @@
+name: invoice-ap
+trigger: on_classify
+match:
+  classification: invoice
+workflow: Invoice Intake
+description: Route classified invoices into the AP flow automatically.
