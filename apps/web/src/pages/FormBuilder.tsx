@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FormsAPI, OrgAPI } from "../api";
 import FormExit from "../components/FormExit";
-import { t } from "../i18n";
+import { dirFor, t } from "../i18n";
 
 const TYPES = [
   "text",
@@ -75,14 +75,27 @@ function parseRecipients(raw: string): string[] {
   return out;
 }
 
-/** Short choices preview under the paper-row label (e.g. "A, B"). */
-function optionsSnippet(field: { type?: string; options?: string[] }): string {
-  if (!CHOICE_TYPES.has(field.type as FieldType)) return "";
-  const opts = (field.options || []).map(String).map((s) => s.trim()).filter(Boolean);
-  if (!opts.length) return "";
-  if (opts.length <= 4) return opts.join(", ");
-  return `${opts.slice(0, 4).join(", ")}…`;
+/** Choice options for paper preview (trimmed, non-empty). */
+function fieldOptions(field: { options?: string[] }): string[] {
+  return (field.options || []).map(String).map((s) => s.trim()).filter(Boolean);
 }
+
+/** Visible value inside a select-like paper mock. */
+function selectDisplayValue(
+  field: { placeholder?: string; options?: string[]; default?: string },
+  language: string
+): string {
+  const def = String(field.default || "").trim();
+  if (def) return def;
+  const ph = String(field.placeholder || "").trim();
+  if (ph) return ph;
+  const opts = fieldOptions(field);
+  if (opts.length) return opts[0];
+  return t(language, "noChoices");
+}
+
+const INPUT_LIKE = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date"]);
+const SELECT_LIKE = new Set<FieldType>(["dropdown", "yesno"]);
 
 function normalizeField(field: Record<string, unknown>, nextType: FieldType): Record<string, unknown> {
   const out: Record<string, unknown> = {
@@ -650,9 +663,11 @@ export default function FormBuilder() {
             </button>
           ))}
         </div>
-        <div className="paper" data-demo="form-paper">
+        <div className="paper" data-demo="form-paper" dir={dirFor(language)} lang={language}>
           {fields.map((f, i) => {
-            const snippet = optionsSnippet(f);
+            const type = f.type as FieldType;
+            const opts = fieldOptions(f);
+            const labelText = f.label || t(language, "newField");
             return (
               <div
                 key={f.id || `field-${i}`}
@@ -671,15 +686,75 @@ export default function FormBuilder() {
                 <span className="line-no">{i + 1}</span>
                 <div className="paper-row-main">
                   <div className="mono paper-row-type">{f.type}</div>
-                  <strong className="paper-label" dir="auto" data-demo="paper-label">
-                    {f.label || t(language, "newField")}
-                  </strong>
-                  {f.required ? <span className="pill bad">{t(language, "required")}</span> : null}
-                  {snippet ? (
-                    <div className="paper-options" dir="auto" data-demo="paper-options">
-                      {snippet}
-                    </div>
-                  ) : null}
+                  {type === "heading" ? (
+                    <h3 className="paper-heading" dir="auto" data-demo="paper-label">
+                      {labelText}
+                    </h3>
+                  ) : (
+                    <>
+                      <div className="paper-label-row">
+                        <strong className="paper-label" dir="auto" data-demo="paper-label">
+                          {labelText}
+                        </strong>
+                        {f.required ? <span className="pill bad">{t(language, "required")}</span> : null}
+                      </div>
+                      {SELECT_LIKE.has(type) ? (
+                        <div className="paper-select-mock" data-demo="paper-options" aria-hidden="true">
+                          <span className="paper-select-value" dir="auto">
+                            {type === "yesno"
+                              ? f.default === "no"
+                                ? t(language, "no")
+                                : f.default === "yes"
+                                  ? t(language, "yes")
+                                  : "—"
+                              : selectDisplayValue(f, language)}
+                          </span>
+                          <span className="paper-select-chevron" aria-hidden="true">
+                            ▼
+                          </span>
+                        </div>
+                      ) : null}
+                      {type === "radio" ? (
+                        <div className="paper-radio-mock" data-demo="paper-options" aria-hidden="true">
+                          {(opts.length ? opts : ["A", "B"]).map((o) => (
+                            <span key={o} className="paper-radio-option">
+                              <span className="paper-radio-dot" />
+                              <span dir="auto">{o}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {INPUT_LIKE.has(type) ? (
+                        <div
+                          className={`paper-input-mock ${type === "textarea" ? "tall" : ""}`}
+                          aria-hidden="true"
+                        >
+                          <span className="paper-input-placeholder" dir="auto">
+                            {String(f.placeholder || "").trim() ||
+                              (type === "email"
+                                ? "name@example.com"
+                                : type === "number"
+                                  ? "0"
+                                  : type === "phone"
+                                    ? "050-000-0000"
+                                    : type === "date"
+                                      ? "YYYY-MM-DD"
+                                      : "")}
+                          </span>
+                        </div>
+                      ) : null}
+                      {type === "signature" ? (
+                        <div className="paper-sign-mock" aria-hidden="true">
+                          <span>{t(language, "type_signature")}</span>
+                        </div>
+                      ) : null}
+                      {type === "dropdown" && opts.length > 1 ? (
+                        <div className="paper-options-hint" dir="auto">
+                          {opts.length <= 4 ? opts.join(", ") : `${opts.slice(0, 4).join(", ")}…`}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
                 <div className="paper-row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
