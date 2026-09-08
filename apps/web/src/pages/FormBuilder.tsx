@@ -96,6 +96,27 @@ function selectDisplayValue(
 
 const INPUT_LIKE = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date"]);
 const SELECT_LIKE = new Set<FieldType>(["dropdown", "yesno"]);
+/** Control mock implies the type — skip bold default “New field” titles. */
+const CONTROL_IMPLIED_TYPES = new Set<FieldType>(["email", "phone", "signature"]);
+
+/** True when label is empty or the generic palette default in any desk language. */
+function isUselessDefaultLabel(label: string): boolean {
+  const trimmed = String(label || "").trim();
+  if (!trimmed) return true;
+  for (const code of ["en", "he", "ar", "es", "fr"]) {
+    if (trimmed === t(code, "newField")) return true;
+  }
+  return false;
+}
+
+/** Type-appropriate input placeholder (not a bold row title). */
+function defaultInputPlaceholder(type: FieldType, language: string): string {
+  if (type === "email") return t(language, "phEmail");
+  if (type === "phone") return t(language, "phPhone");
+  if (type === "number") return "0";
+  if (type === "date") return "YYYY-MM-DD";
+  return "";
+}
 
 function normalizeField(field: Record<string, unknown>, nextType: FieldType): Record<string, unknown> {
   const out: Record<string, unknown> = {
@@ -160,6 +181,9 @@ export default function FormBuilder() {
   const [formId, setFormId] = useState<number | null>(id ? Number(id) : null);
   const [msg, setMsg] = useState("");
   const [share, setShare] = useState("");
+  const [recipientLinks, setRecipientLinks] = useState<
+    { email: string; url?: string | null; token?: string | null; status?: string }[]
+  >([]);
   const [busy, setBusy] = useState(false);
   const [thread, setThread] = useState<ChatMsg[]>([]);
   const [locked, setLocked] = useState(false);
@@ -204,6 +228,8 @@ export default function FormBuilder() {
       setSubmissionCount(f.submission_count || 0);
       setSel(0);
       if (f.share_url) setShare(f.share_url);
+      else setShare("");
+      setRecipientLinks(f.recipient_links || []);
     });
   }, [id]);
 
@@ -292,13 +318,16 @@ export default function FormBuilder() {
 
   const add = (type: string) => {
     if (frozen) return;
+    const ty = type as FieldType;
+    const implied = CONTROL_IMPLIED_TYPES.has(ty);
     const field = normalizeField(
       {
         id: nid(),
-        label: type === "heading" ? t(language, "section") : t(language, "newField"),
-        required: type === "signature",
+        label: ty === "heading" ? t(language, "section") : implied ? "" : t(language, "newField"),
+        required: ty === "signature",
+        placeholder: ty === "email" || ty === "phone" ? defaultInputPlaceholder(ty, language) : "",
       },
-      type as FieldType
+      ty
     );
     setFields((prev) => {
       const next = [...prev, field];
@@ -489,12 +518,13 @@ export default function FormBuilder() {
               try {
                 const saved = await persist();
                 const live = await FormsAPI.publish(saved.id);
-                setShare(live.share_url);
+                setShare(live.share_url || "");
+                setRecipientLinks(live.recipient_links || []);
                 const notified = live.notified || [];
                 setMsg(
                   notified.length
-                    ? `${t(language, "formAlive")} · ${t(language, "willBeSentTo")} ${notified.join(", ")}`
-                    : t(language, "formAlive")
+                    ? `${t(language, "formAlive")} · ${t(language, "personalLinksReady")}`
+                    : `${t(language, "formAlive")} · ${t(language, "openLinkOnlyNoRecipients")}`
                 );
               } catch (e: any) {
                 setMsg(e.message);
@@ -587,9 +617,65 @@ export default function FormBuilder() {
       )}
       {msg && (
         <p className="pill ok">
-          {msg} {share && <a href={share}> {share}</a>}
+          {msg}{" "}
+          {share && !recipientLinks.length ? (
+            <a href={share}> {share}</a>
+          ) : null}
         </p>
       )}
+      {recipientLinks.length > 0 && (
+        <div className="card" data-demo="recipient-links" style={{ marginBottom: 12 }}>
+          <div className="eyebrow">{t(language, "personalLinks")}</div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t(language, "personalLinksHint")}
+          </p>
+          <ul className="recipient-link-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {recipientLinks.map((link) => (
+              <li
+                key={link.email}
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <span className="mono">{link.email}</span>
+                <span className={`pill ${link.status === "submitted" ? "ok" : ""}`}>{link.status || "pending"}</span>
+                {link.url ? (
+                  <>
+                    <a className="btn" href={link.url} target="_blank" rel="noreferrer">
+                      {link.url}
+                    </a>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            `${window.location.origin}${link.url}${link.email ? `?email=${encodeURIComponent(link.email)}` : ""}`
+                          );
+                          setMsg(t(language, "linkCopied"));
+                        } catch {
+                          setMsg(link.url || "");
+                        }
+                      }}
+                    >
+                      {t(language, "copyLink")}
+                    </button>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!recipientLinks.length && share ? (
+        <p className="muted" data-demo="open-share-hint">
+          {t(language, "openLinkOnlyNoRecipients")}: <a href={share}>{share}</a>
+        </p>
+      ) : null}
       <div className="card form-options" data-demo="form-recipients">
         <div className="eyebrow">{t(language, "formOptions")}</div>
         <div className="form-options-grid">
@@ -667,7 +753,10 @@ export default function FormBuilder() {
           {fields.map((f, i) => {
             const type = f.type as FieldType;
             const opts = fieldOptions(f);
-            const labelText = f.label || t(language, "newField");
+            const rawLabel = String(f.label || "").trim();
+            const hideDefaultTitle = CONTROL_IMPLIED_TYPES.has(type) && isUselessDefaultLabel(rawLabel);
+            const labelText = hideDefaultTitle ? "" : rawLabel || t(language, "newField");
+            const showLabelRow = type === "heading" || !hideDefaultTitle || !!f.required;
             return (
               <div
                 key={f.id || `field-${i}`}
@@ -692,12 +781,16 @@ export default function FormBuilder() {
                     </h3>
                   ) : (
                     <>
-                      <div className="paper-label-row">
-                        <strong className="paper-label" dir="auto" data-demo="paper-label">
-                          {labelText}
-                        </strong>
-                        {f.required ? <span className="pill bad">{t(language, "required")}</span> : null}
-                      </div>
+                      {showLabelRow ? (
+                        <div className="paper-label-row">
+                          {!hideDefaultTitle ? (
+                            <strong className="paper-label" dir="auto" data-demo="paper-label">
+                              {labelText}
+                            </strong>
+                          ) : null}
+                          {f.required ? <span className="pill bad">{t(language, "required")}</span> : null}
+                        </div>
+                      ) : null}
                       {SELECT_LIKE.has(type) ? (
                         <div className="paper-select-mock" data-demo="paper-options" aria-hidden="true">
                           <span className="paper-select-value" dir="auto">
@@ -730,16 +823,7 @@ export default function FormBuilder() {
                           aria-hidden="true"
                         >
                           <span className="paper-input-placeholder" dir="auto">
-                            {String(f.placeholder || "").trim() ||
-                              (type === "email"
-                                ? "name@example.com"
-                                : type === "number"
-                                  ? "0"
-                                  : type === "phone"
-                                    ? "050-000-0000"
-                                    : type === "date"
-                                      ? "YYYY-MM-DD"
-                                      : "")}
+                            {String(f.placeholder || "").trim() || defaultInputPlaceholder(type, language)}
                           </span>
                         </div>
                       ) : null}
@@ -799,7 +883,12 @@ export default function FormBuilder() {
           <h3 className="inspector-title">{selected ? t(language, "fieldDetails") : t(language, "selectFieldHint")}</h3>
           {selected ? (
             <>
-              <p className="muted inspector-hint">{selected.label || t(language, "newField")}</p>
+              <p className="muted inspector-hint">
+                {selected.label ||
+                  (CONTROL_IMPLIED_TYPES.has(selected.type as FieldType)
+                    ? t(language, `type_${selected.type}`)
+                    : t(language, "newField"))}
+              </p>
               <div className="field">
                 <label>{t(language, "type")}</label>
                 <select
