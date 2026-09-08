@@ -17,7 +17,7 @@ Short script for demos and onboarding. Stopwatch-friendly. Strategy / ask / land
 | 5 | Publish | Show personal link. Optional: open `/f/…` in a private window, fill + sign, submit once (link closes). |
 | 6 | Answered | Submission log + digest actions. |
 | 7 | Flows / Automations | Real run history / fire counts — not a fake queue. |
-| 8 | Connectors (optional) | Label **demo sandbox** for Drive/365 sync. Show **Ollama → Use this model** only if `ollama serve` is up. |
+| 8 | Connectors (optional) | **Browse** demo catalog: Source → Folder → files → Sync selected. Label **demo catalog** for Drive/365. Show **Ollama → Use this model** only if `ollama serve` is up. |
 
 Stop. Hand off to Q&A or the Israel runbook ask if this is a GTM room.
 
