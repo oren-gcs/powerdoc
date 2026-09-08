@@ -20,7 +20,8 @@ DocFlow is **meant for production**. Merged `main` is the product baseline; rema
 | **RAG** | Keyword SQL search; plaintext chunks | Vector embeddings (pgvector or equiv.) + optional at-rest encryption; tenant-safe retrieval |
 | **Signatures** | Canvas drawing | Policy path for qualified e-sign / evidence if sold as legal signature |
 | **TLS / storage** | Local HTTP + filesystem paths | HTTPS terminate; encrypted object storage (S3/GCS) |
-| **K8s / cloud** | Sketch manifests + TF | One applyable path, image tags ≠ `:latest`, secrets not in git |
+| **K8s / cloud** | Sketch manifests + TF | Kustomize base + overlays; image tags ≠ `:latest`; secrets not in git |
+| **Architecture** | Modular monolith default | Microservices via `DOCFLOW_SERVICE` + gateway; see [`ARCHITECTURE.md`](./ARCHITECTURE.md) |
 | **Observability** | Basic health | Metrics, structured logs, alert on pipeline/scan failures |
 | **CI** | Playwright | Pytest + Playwright + image build on every PR |
 
@@ -33,8 +34,9 @@ DocFlow is **meant for production**. Merged `main` is the product baseline; rema
 
 ## Deploy posture
 
-- **Compose:** local / single-node production with Postgres + TLS reverse proxy.
-- **K8s:** `infra/k8s/docflow.yaml` is the seed — replace placeholders before any customer cluster.
-- **Cloud:** Terraform AWS/GCP sketches need secrets, networking, and a verified `kubectl`/`ecs` path.
+- **Compose (monolith):** `docker compose up --build` — local / single-node.
+- **Compose (microservices):** `docker compose -f docker-compose.microservices.yml up --build`.
+- **K8s:** `kubectl apply -k infra/k8s/overlays/{local,aws,gcp}` after replacing Secret values.
+- **Cloud:** Terraform AWS/GCP — pass `db_password`; dual path, no lock-in yet.
 
 Everyday operator docs: [`HOW_TO_USE.md`](./HOW_TO_USE.md). Section review agents: [`REVIEW_AGENTS.md`](./REVIEW_AGENTS.md) (integrations first).

@@ -44,6 +44,11 @@ resource "aws_db_subnet_group" "db" {
   subnet_ids = aws_subnet.private[*].id
 }
 
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
 resource "aws_db_instance" "pg" {
   identifier             = "${var.name}-pg"
   engine                 = "postgres"
@@ -51,7 +56,7 @@ resource "aws_db_instance" "pg" {
   instance_class         = "db.t4g.micro"
   allocated_storage      = 20
   username               = "docflow"
-  password               = "ChangeMeBeforeApply1"
+  password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.db.name
   vpc_security_group_ids = [aws_security_group.db.id]
   skip_final_snapshot    = true

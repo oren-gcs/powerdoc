@@ -80,12 +80,10 @@ function parseRecipients(raw: string): string[] {
   return out;
 }
 
-/** Choice options for paper preview (trimmed, non-empty). */
 function fieldOptions(field: { options?: string[] }): string[] {
   return (field.options || []).map(String).map((s) => s.trim()).filter(Boolean);
 }
 
-/** Visible value inside a select-like paper mock. */
 function selectDisplayValue(
   field: { placeholder?: string; options?: string[]; default?: string },
   language: string
@@ -101,10 +99,8 @@ function selectDisplayValue(
 
 const INPUT_LIKE = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date"]);
 const SELECT_LIKE = new Set<FieldType>(["dropdown", "yesno"]);
-/** Control mock implies the type — skip bold default “New field” titles. */
 const CONTROL_IMPLIED_TYPES = new Set<FieldType>(["email", "phone", "signature", "file", "images"]);
 
-/** True when label is empty or the generic palette default in any desk language. */
 function isUselessDefaultLabel(label: string): boolean {
   const trimmed = String(label || "").trim();
   if (!trimmed) return true;
@@ -114,7 +110,6 @@ function isUselessDefaultLabel(label: string): boolean {
   return false;
 }
 
-/** Type-appropriate input placeholder (not a bold row title). */
 function defaultInputPlaceholder(type: FieldType, language: string): string {
   if (type === "email") return t(language, "phEmail");
   if (type === "phone") return t(language, "phPhone");
@@ -821,7 +816,7 @@ export default function FormBuilder() {
                         </div>
                       ) : null}
                       {SELECT_LIKE.has(type) ? (
-                        <div className="paper-select-mock" data-demo="paper-options" aria-hidden="true">
+                        <div className="paper-select-preview" data-demo="paper-options" aria-hidden="true">
                           <span className="paper-select-value" dir="auto">
                             {type === "yesno"
                               ? f.default === "no"
@@ -837,7 +832,7 @@ export default function FormBuilder() {
                         </div>
                       ) : null}
                       {type === "radio" ? (
-                        <div className="paper-radio-mock" data-demo="paper-options" aria-hidden="true">
+                        <div className="paper-radio-preview" data-demo="paper-options" aria-hidden="true">
                           {(opts.length ? opts : ["A", "B"]).map((o) => (
                             <span key={o} className="paper-radio-option">
                               <span className="paper-radio-dot" />
@@ -848,7 +843,7 @@ export default function FormBuilder() {
                       ) : null}
                       {INPUT_LIKE.has(type) ? (
                         <div
-                          className={`paper-input-mock ${type === "textarea" ? "tall" : ""}`}
+                          className={`paper-input-preview ${type === "textarea" ? "tall" : ""}`}
                           aria-hidden="true"
                         >
                           <span className="paper-input-placeholder" dir="auto">
@@ -857,12 +852,12 @@ export default function FormBuilder() {
                         </div>
                       ) : null}
                       {type === "signature" ? (
-                        <div className="paper-sign-mock" aria-hidden="true">
+                        <div className="paper-sign-preview" aria-hidden="true">
                           <span>{t(language, "type_signature")}</span>
                         </div>
                       ) : null}
                       {type === "file" ? (
-                        <div className="paper-upload-mock" aria-hidden="true" data-demo="paper-file">
+                        <div className="paper-upload-preview" aria-hidden="true" data-demo="paper-file">
                           <span className="paper-upload-btn">{t(language, "chooseFile")}</span>
                           <span className="paper-upload-hint muted">
                             {(Array.isArray(f.accept) && f.accept.length ? f.accept : DEFAULT_FILE_ACCEPT).join(", ")}
@@ -870,7 +865,7 @@ export default function FormBuilder() {
                         </div>
                       ) : null}
                       {type === "images" ? (
-                        <div className="paper-upload-mock images" aria-hidden="true" data-demo="paper-images">
+                        <div className="paper-upload-preview images" aria-hidden="true" data-demo="paper-images">
                           <span className="paper-upload-btn">{t(language, "chooseImages")}</span>
                           <span className="paper-upload-hint muted">
                             {t(language, "maxFiles", { n: Number(f.max_count) || 5 })} ·{" "}

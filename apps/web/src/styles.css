@@ -559,7 +559,7 @@ pre.ocr {
   font-weight: 700;
   word-break: break-word;
 }
-.paper-select-mock {
+.paper-select-preview {
   width: 100%;
   display: flex;
   align-items: center;
@@ -589,7 +589,7 @@ pre.ocr {
   color: #1a1408;
   opacity: 0.85;
 }
-.paper-radio-mock {
+.paper-radio-preview {
   width: 100%;
   display: flex;
   flex-wrap: wrap;
@@ -613,7 +613,7 @@ pre.ocr {
   background: #fffdf8;
   flex-shrink: 0;
 }
-.paper-input-mock {
+.paper-input-preview {
   width: 100%;
   margin-top: 4px;
   padding: 9px 12px;
@@ -625,7 +625,7 @@ pre.ocr {
   box-sizing: border-box;
   pointer-events: none;
 }
-.paper-input-mock.tall {
+.paper-input-preview.tall {
   min-height: 64px;
 }
 .paper-input-placeholder {
@@ -635,7 +635,7 @@ pre.ocr {
   opacity: 0.75;
   word-break: break-word;
 }
-.paper-sign-mock {
+.paper-sign-preview {
   width: 100%;
   margin-top: 4px;
   min-height: 52px;
@@ -650,7 +650,7 @@ pre.ocr {
   font-weight: 600;
   pointer-events: none;
 }
-.paper-upload-mock {
+.paper-upload-preview {
   width: 100%;
   margin-top: 4px;
   min-height: 44px;
@@ -665,7 +665,7 @@ pre.ocr {
   box-sizing: border-box;
   pointer-events: none;
 }
-.paper-upload-mock.images {
+.paper-upload-preview.images {
   min-height: 56px;
 }
 .paper-upload-btn {

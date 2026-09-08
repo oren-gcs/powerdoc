@@ -490,27 +490,38 @@ def _notify_recipients(
     locale: str | None = None,
     tenant_id: int,
 ) -> tuple[list[str], list[dict]]:
-    """Create personal share tokens and in-app notifications. No real SMTP yet."""
+    from app.engine.mail import send_smtp, smtp_configured
+
     sent: list[str] = []
     links: list[dict] = []
     lang = locale or f.language
     for rec in _clean_recipients(recipients):
         share = _ensure_personal_share(db, f, rec, channel=channel, locale=lang)
         link = f"/f/{share.token}"
+        subject = f"Please complete: {f.name}"
+        body = f"Open {link} to fill and sign (personal link for {rec}). Language: {lang}."
+        smtp_ok = False
+        if channel == "email" and smtp_configured():
+            try:
+                send_smtp(to=[rec], subject=subject, body=body)
+                smtp_ok = True
+            except Exception:
+                smtp_ok = False
         target = db.query(User).filter(User.email == rec).first()
         db.add(
             Notification(
                 tenant_id=tenant_id,
                 user_id=target.id if target else None,
                 channel=channel,
-                subject=f"Please complete: {f.name}",
-                body=f"Open {link} to fill and sign (personal link for {rec}). Language: {lang}.",
+                subject=subject,
+                body=body,
+                status="sent" if smtp_ok else "recorded",
                 extra={
                     "form_id": f.id,
                     "link": link,
                     "recipient": rec,
                     "share_token": share.token,
-                    "smtp": False,
+                    "smtp": smtp_ok,
                 },
             )
         )

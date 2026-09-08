@@ -29,9 +29,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     smtp_host: str = ""
     smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
     smtp_from: str = "DocFlow <noreply@docflow.local>"
     seed_demo: bool = True
-    cloud_provider: str = "local"  # local | aws | gcp
+    cloud_provider: str = "local"
+    docflow_service: str = "monolith"
 
     @property
     def cors_origin_list(self) -> list[str]:

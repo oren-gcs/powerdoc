@@ -13,7 +13,8 @@ def health():
     s = get_settings()
     return {
         "status": "healthy",
-        "service": s.app_name,
+        "service": getattr(s, "docflow_service", "monolith"),
+        "name": s.app_name,
         "version": s.app_version,
         "environment": s.environment,
         "cloud_provider": s.cloud_provider,

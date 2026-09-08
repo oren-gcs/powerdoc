@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docflow-config
+data:
+  ENVIRONMENT: production
+  CLOUD_PROVIDER: local
+  CORS_ORIGINS: https://docflow.example
+  SEED_DEMO: "false"
+  IDENTITY_URL: http://identity:8000
+  DOCUMENTS_URL: http://documents:8000
+  FORMS_URL: http://forms:8000
+  WORKFLOW_URL: http://workflow:8000
+  NOTIFY_URL: http://notify:8000
+  ANALYTICS_URL: http://analytics:8000

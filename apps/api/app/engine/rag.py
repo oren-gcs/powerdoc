@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Document, ExtractedField, FeatureFlag, KnowledgeChunk, OCRResult
 
-# Maps KnowledgeChunk.source_type → feature flag that gates inclusion in retrieve().
 SOURCE_KIND_FLAGS = {
     "google_drive": "rag_source_google_drive",
     "microsoft": "rag_source_microsoft",
@@ -17,7 +16,6 @@ SOURCE_KIND_FLAGS = {
     "form_insights": "rag_source_forms",
 }
 
-# Documented retrieve defaults (form compose uses a stricter floor).
 RAG_MIN_SCORE_DEFAULT = 1
 RAG_MIN_SCORE_FORM_COMPOSE = 3
 
