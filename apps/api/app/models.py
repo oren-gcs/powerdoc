@@ -315,14 +315,19 @@ class Form(Base):
 
 
 class FormShare(Base):
+    """Per-recipient invite. `recipient` is the invite email; `token` is their private fill link."""
+
     __tablename__ = "form_shares"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     form_id: Mapped[int] = mapped_column(ForeignKey("forms.id"), index=True)
     channel: Mapped[str] = mapped_column(String(24), default="link")
-    recipient: Mapped[str] = mapped_column(String(255))
+    recipient: Mapped[str] = mapped_column(String(255))  # email
     locale: Mapped[str] = mapped_column(String(16), default="en")
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending")  # pending|submitted|revoked
+    submission_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class FormSubmission(Base):

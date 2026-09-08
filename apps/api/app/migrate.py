@@ -22,3 +22,17 @@ def ensure_sqlite_columns(engine) -> None:
         sub_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(form_submissions)"))]
         if sub_cols and "actions" not in sub_cols:
             conn.execute(text("ALTER TABLE form_submissions ADD COLUMN actions JSON DEFAULT '[]'"))
+
+        share_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(form_shares)"))]
+        if share_cols:
+            if "token" not in share_cols:
+                conn.execute(text("ALTER TABLE form_shares ADD COLUMN token VARCHAR(64)"))
+            if "status" not in share_cols:
+                conn.execute(text("ALTER TABLE form_shares ADD COLUMN status VARCHAR(24) DEFAULT 'pending'"))
+            if "submission_id" not in share_cols:
+                conn.execute(text("ALTER TABLE form_shares ADD COLUMN submission_id INTEGER"))
+            # Best-effort unique index for personal tokens (ignore if already present).
+            try:
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_form_shares_token ON form_shares(token)"))
+            except Exception:
+                pass

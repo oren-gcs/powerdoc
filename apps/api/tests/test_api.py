@@ -170,8 +170,13 @@ def test_form_compose_publish_and_public_submit(client):
     ]
     live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
     assert live.status_code == 200, live.text
-    token = live.json()["share_token"]
-    assert token
+    # Listed recipients → personal links only (no shared open token).
+    assert live.json()["share_token"] is None
+    assert live.json()["share_url"] is None
+    assert live.json()["open_link"] is False
+    links = live.json()["recipient_links"]
+    assert {x["email"] for x in links} == {"ops@example.com", "finance@example.com"}
+    assert all(x["token"] and x["url"] and x["status"] == "pending" for x in links)
     assert live.json()["notified"] == ["ops@example.com", "finance@example.com"]
     assert live.json()["recipients"] == ["ops@example.com", "finance@example.com"]
     shared = client.post(
@@ -181,11 +186,20 @@ def test_form_compose_publish_and_public_submit(client):
     )
     assert shared.status_code == 200, shared.text
     assert shared.json()["sent"] == ["counsel@example.com"]
+    assert shared.json()["link"] is None
+    counsel_links = shared.json()["recipient_links"]
+    assert len(counsel_links) == 1
+    token = counsel_links[0]["token"]
+    assert counsel_links[0]["email"] == "counsel@example.com"
     refreshed = client.get(f"/api/v1/forms/{fid}", headers=headers)
     assert refreshed.json()["recipients"] == ["counsel@example.com"]
+    assert refreshed.json()["share_token"] is None
     public = client.get(f"/api/v1/public/forms/{token}")
     assert public.status_code == 200
     assert "recipients" not in public.json()
+    assert public.json()["personal"] is True
+    assert public.json()["recipient_email"] == "counsel@example.com"
+    assert public.json()["already_submitted"] is False
     assert public.json()["sends_to"] == [
         {"email": "counsel@example.com", "name": None},
     ]
@@ -206,12 +220,30 @@ def test_form_compose_publish_and_public_submit(client):
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["status"] == "implemented"
     assert submitted.json()["locked"] is True
+    assert submitted.json()["submission_id"]
     assert submitted.json()["answered_folder_id"]
+    # Personal link closes after first submit.
+    again = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        json={
+            "name": "Vendor Lee",
+            "email": "lee@example.com",
+            "answers": answers,
+            "signature": "data:image/png;base64,xxx",
+        },
+    )
+    assert again.status_code == 409
+    closed = client.get(f"/api/v1/public/forms/{token}")
+    assert closed.status_code == 200
+    assert closed.json()["already_submitted"] is True
+    assert closed.json()["link_closed"] is True
+    assert closed.json()["submission_id"] == submitted.json()["submission_id"]
     rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
     assert rows.status_code == 200
     assert rows.json()[0]["submitter_email"] == "lee@example.com"
     assert rows.json()[0]["document_id"]
     assert rows.json()[0]["document_filename"]
+    assert rows.json()[0]["id"] == submitted.json()["submission_id"]
 
     locked = client.get(f"/api/v1/forms/{fid}", headers=headers)
     assert locked.status_code == 200
@@ -326,6 +358,110 @@ def test_form_compose_publish_and_public_submit(client):
     assert answered_only.json()["folder"]["kind"] == "answered"
     assert len(answered_only.json()["submissions"]) >= 1
     assert answered_only.json()["submissions"][0]["document_id"]
+
+
+def test_personal_recipient_tokens_isolated(client):
+    """Two recipients → two tokens; one submit doesn't close the other; second submit → 409."""
+    headers = auth_headers(client)
+    fields = [
+        {"id": "q1", "type": "text", "label": "Note", "required": True, "options": []},
+        {"id": "sig", "type": "signature", "label": "Sign", "required": True, "options": []},
+    ]
+    created = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={
+            "name": "Personal shares",
+            "description": "per-recipient",
+            "language": "en",
+            "fields": fields,
+            "recipients": ["alice@example.com", "bob@example.com"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    fid = created.json()["id"]
+    live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
+    assert live.status_code == 200, live.text
+    assert live.json()["share_token"] is None
+    links = {x["email"]: x for x in live.json()["recipient_links"]}
+    assert set(links) == {"alice@example.com", "bob@example.com"}
+    alice_tok = links["alice@example.com"]["token"]
+    bob_tok = links["bob@example.com"]["token"]
+    assert alice_tok != bob_tok
+
+    alice_get = client.get(f"/api/v1/public/forms/{alice_tok}?email=alice@example.com")
+    assert alice_get.status_code == 200
+    assert alice_get.json()["email_match"] is True
+    assert alice_get.json()["recipient_email"] == "alice@example.com"
+
+    alice_sub = client.post(
+        f"/api/v1/public/forms/{alice_tok}/submit",
+        json={
+            "name": "Alice",
+            "email": "alice@example.com",
+            "answers": {"q1": "from alice"},
+            "signature": "data:image/png;base64,aaa",
+        },
+    )
+    assert alice_sub.status_code == 200, alice_sub.text
+    alice_sid = alice_sub.json()["submission_id"]
+    assert alice_sid
+
+    # Alice's link is closed; Bob's remains open.
+    assert (
+        client.post(
+            f"/api/v1/public/forms/{alice_tok}/submit",
+            json={
+                "name": "Alice",
+                "email": "alice@example.com",
+                "answers": {"q1": "again"},
+                "signature": "data:image/png;base64,aaa",
+            },
+        ).status_code
+        == 409
+    )
+    bob_get = client.get(f"/api/v1/public/forms/{bob_tok}")
+    assert bob_get.status_code == 200
+    assert bob_get.json()["already_submitted"] is False
+    assert bob_get.json()["link_closed"] is False
+
+    bob_sub = client.post(
+        f"/api/v1/public/forms/{bob_tok}/submit",
+        json={
+            "name": "Bob",
+            "email": "bob@example.com",
+            "answers": {"q1": "from bob"},
+            "signature": "data:image/png;base64,bbb",
+        },
+    )
+    assert bob_sub.status_code == 200, bob_sub.text
+    bob_sid = bob_sub.json()["submission_id"]
+    assert bob_sid
+    assert bob_sid != alice_sid
+
+    rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
+    assert rows.status_code == 200
+    ids = {r["id"] for r in rows.json()}
+    assert ids == {alice_sid, bob_sid}
+
+    # Open form (no recipients) still gets a generic share token.
+    open_form = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={
+            "name": "Open form",
+            "description": "anyone",
+            "language": "en",
+            "fields": fields,
+            "recipients": [],
+        },
+    )
+    oid = open_form.json()["id"]
+    open_live = client.post(f"/api/v1/forms/{oid}/publish", headers=headers)
+    assert open_live.status_code == 200
+    assert open_live.json()["share_token"]
+    assert open_live.json()["open_link"] is True
+    assert open_live.json()["recipient_links"] == []
 
 
 def test_n8n_export_and_connectors(client):

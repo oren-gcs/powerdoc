@@ -133,7 +133,10 @@ export const FormsAPI = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  publicGet: (token: string) => api(`/api/v1/public/forms/${token}`),
+  publicGet: (token: string, email?: string) => {
+    const q = email ? `?email=${encodeURIComponent(email)}` : "";
+    return api(`/api/v1/public/forms/${token}${q}`);
+  },
   publicSubmit: (token: string, body: object) =>
     api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: JSON.stringify(body) }),
 };

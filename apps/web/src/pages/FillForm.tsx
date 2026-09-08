@@ -126,15 +126,34 @@ export default function FillForm() {
           <label>{t(lang, "email")}</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
         </div>
-        {form.fields.map((f: any, i: number) => (
+        {form.fields.map((f: any, i: number) => {
+          const rawLabel = String(f.label || "").trim();
+          const impliedControl = f.type === "email" || f.type === "phone" || f.type === "signature";
+          const uselessDefault =
+            !rawLabel ||
+            rawLabel === t("en", "newField") ||
+            rawLabel === t("he", "newField") ||
+            rawLabel === t("ar", "newField") ||
+            rawLabel === t("es", "newField") ||
+            rawLabel === t("fr", "newField");
+          const hideLabel = impliedControl && uselessDefault;
+          const labelText = hideLabel ? "" : rawLabel;
+          return (
           <div className="field" key={f.id}>
             {f.type === "heading" ? (
-              <h3>{f.label}</h3>
+              <h3>{labelText || rawLabel}</h3>
             ) : (
               <>
-                <label>
-                  {i + 1}. {f.label} {f.required ? "*" : ""}
-                </label>
+                {!hideLabel || f.required ? (
+                  <label>
+                    {labelText ? (
+                      <>
+                        {i + 1}. {labelText}
+                      </>
+                    ) : null}{" "}
+                    {f.required ? "*" : ""}
+                  </label>
+                ) : null}
                 {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
                 {f.type === "textarea" ? (
                   <textarea
@@ -170,7 +189,8 @@ export default function FillForm() {
               </>
             )}
           </div>
-        ))}
+          );
+        })}
         {err && <p className="pill bad">{err}</p>}
         <div className="fill-submit-row">
           <button className="btn primary" type="submit">

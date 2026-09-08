@@ -1,7 +1,7 @@
 from datetime import datetime
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -159,6 +159,7 @@ def _archive_form(db: Session, f: Form, *, keep_answers: bool) -> Form:
     f.archived_at = datetime.utcnow()
     f.archive_keep_answers = keep_answers
     f.share_token = None
+    _revoke_pending_shares(db, f.id)
 
     if form_submission_count(db, f.id):
         folder = ensure_answered_folder(db, f)
@@ -216,8 +217,81 @@ def _sends_to(db: Session, f: Form) -> list[dict]:
     return labels
 
 
+def _share_link(share: FormShare) -> dict:
+    email = (share.recipient or "").strip().lower()
+    token = share.token or ""
+    return {
+        "email": email,
+        "token": token or None,
+        "url": f"/f/{token}" if token else None,
+        "status": share.status or "pending",
+        "submission_id": share.submission_id,
+    }
+
+
+def _recipient_links(db: Session, form_id: int) -> list[dict]:
+    """Latest personal share per recipient email (operator copy list)."""
+    rows = (
+        db.query(FormShare)
+        .filter(FormShare.form_id == form_id, FormShare.token.isnot(None))
+        .order_by(FormShare.id.desc())
+        .all()
+    )
+    seen: set[str] = set()
+    links: list[dict] = []
+    for share in rows:
+        email = (share.recipient or "").strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        links.append(_share_link(share))
+    links.sort(key=lambda x: x["email"])
+    return links
+
+
+def _ensure_personal_share(
+    db: Session,
+    f: Form,
+    email: str,
+    *,
+    channel: str = "email",
+    locale: str | None = None,
+) -> FormShare:
+    """One pending personal token per recipient; reuse existing pending token."""
+    email = (email or "").strip().lower()
+    existing = (
+        db.query(FormShare)
+        .filter(
+            FormShare.form_id == f.id,
+            FormShare.recipient == email,
+            FormShare.status == "pending",
+            FormShare.token.isnot(None),
+        )
+        .order_by(FormShare.id.desc())
+        .first()
+    )
+    if existing:
+        return existing
+    share = FormShare(
+        form_id=f.id,
+        channel=channel,
+        recipient=email,
+        locale=locale or f.language,
+        token=token_urlsafe(16),
+        status="pending",
+        submission_id=None,
+    )
+    db.add(share)
+    db.flush()
+    return share
+
+
 def _out(f: Form, db: Session | None = None) -> dict:
     archived = f.status == "archived" or bool(getattr(f, "archived_at", None))
+    recipients = _form_recipients(f)
+    live = f.status == "live"
+    # Listed recipients → personal links only (no shared open token).
+    open_token = f.share_token if live and f.share_token and not recipients else None
     payload = {
         "id": f.id,
         "name": f.name,
@@ -226,14 +300,16 @@ def _out(f: Form, db: Session | None = None) -> dict:
         "status": f.status,
         "language": f.language,
         "fields": (f.definition or {}).get("fields") or [],
-        "recipients": _form_recipients(f),
+        "recipients": recipients,
         "folder_id": f.folder_id,
         "answered_folder_id": f.answered_folder_id,
         "layer_id": f.layer_id,
         "workflow_id": f.workflow_id,
         "automation_id": f.automation_id,
-        "share_token": f.share_token if f.status == "live" else None,
-        "share_url": f"/f/{f.share_token}" if f.share_token and f.status == "live" else None,
+        "share_token": open_token,
+        "share_url": f"/f/{open_token}" if open_token else None,
+        "open_link": bool(open_token),
+        "recipient_links": [],
         "created_at": f.created_at.isoformat() if f.created_at else None,
         "archived_at": f.archived_at.isoformat() if getattr(f, "archived_at", None) else None,
         "archive_keep_answers": getattr(f, "archive_keep_answers", None),
@@ -247,6 +323,7 @@ def _out(f: Form, db: Session | None = None) -> dict:
         # Locked means definition frozen after first answer — still true when archived.
         payload["locked"] = count > 0
         payload["sends_to"] = _sends_to(db, f)
+        payload["recipient_links"] = _recipient_links(db, f.id) if live and not archived else []
     return payload
 
 
@@ -276,12 +353,14 @@ def _notify_recipients(
     channel: str = "email",
     locale: str | None = None,
     tenant_id: int,
-) -> list[str]:
+) -> tuple[list[str], list[dict]]:
+    """Create personal share tokens and in-app notifications. No real SMTP yet."""
     sent: list[str] = []
+    links: list[dict] = []
     lang = locale or f.language
-    link = f"/f/{f.share_token}"
     for rec in _clean_recipients(recipients):
-        db.add(FormShare(form_id=f.id, channel=channel, recipient=rec, locale=lang))
+        share = _ensure_personal_share(db, f, rec, channel=channel, locale=lang)
+        link = f"/f/{share.token}"
         target = db.query(User).filter(User.email == rec).first()
         db.add(
             Notification(
@@ -289,12 +368,29 @@ def _notify_recipients(
                 user_id=target.id if target else None,
                 channel=channel,
                 subject=f"Please complete: {f.name}",
-                body=f"Open {link} to fill and sign. Language: {lang}.",
-                extra={"form_id": f.id, "link": link},
+                body=f"Open {link} to fill and sign (personal link for {rec}). Language: {lang}.",
+                extra={
+                    "form_id": f.id,
+                    "link": link,
+                    "recipient": rec,
+                    "share_token": share.token,
+                    "smtp": False,
+                },
             )
         )
         sent.append(rec)
-    return sent
+        links.append(_share_link(share))
+    return sent, links
+
+
+def _revoke_pending_shares(db: Session, form_id: int) -> None:
+    rows = (
+        db.query(FormShare)
+        .filter(FormShare.form_id == form_id, FormShare.status == "pending")
+        .all()
+    )
+    for share in rows:
+        share.status = "revoked"
 
 
 @router.get("")
@@ -544,13 +640,19 @@ def publish(form_id: int, user: User = Depends(require("operator")), db: Session
         f.workflow_id = wf.id
     f.folder_id = auto_folder.id
     f.status = "live"
-    f.share_token = f.share_token or token_urlsafe(12)
+    recipients = _form_recipients(f)
+    if recipients:
+        # Listed recipients use personal tokens only — no shared open link.
+        f.share_token = None
+    else:
+        f.share_token = f.share_token or token_urlsafe(12)
     f.published_at = datetime.utcnow()
-    sent = _notify_recipients(db, f, _form_recipients(f), tenant_id=user.tenant_id)
+    sent, recipient_links = _notify_recipients(db, f, recipients, tenant_id=user.tenant_id)
     db.commit()
     db.refresh(f)
     out = _out(f, db)
     out["notified"] = sent
+    out["recipient_links"] = recipient_links or out.get("recipient_links") or []
     return out
 
 
@@ -580,7 +682,9 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
         definition = dict(f.definition or {})
         definition["recipients"] = recipients
         f.definition = definition
-    sent = _notify_recipients(
+    # With a recipient list, kill any open form-level token.
+    f.share_token = None
+    sent, recipient_links = _notify_recipients(
         db,
         f,
         recipients,
@@ -589,7 +693,13 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
         tenant_id=user.tenant_id,
     )
     db.commit()
-    return {"sent": sent, "link": f"/f/{f.share_token}", "channel": body.channel}
+    return {
+        "sent": sent,
+        "link": None,
+        "channel": body.channel,
+        "smtp": False,
+        "recipient_links": recipient_links,
+    }
 
 
 @router.get("/{form_id}/submissions")
@@ -679,7 +789,18 @@ def ingest_submission(
         raise HTTPException(400, str(exc)) from exc
 
 
-def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
+def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | None = None) -> dict:
+    if share is not None:
+        status = (share.status or "pending").lower()
+        if status == "submitted":
+            raise HTTPException(409, "This personal link was already used. Submission is closed.")
+        if status == "revoked":
+            raise HTTPException(409, "This personal link has been revoked.")
+        if status != "pending":
+            raise HTTPException(409, "This personal link is no longer valid.")
+        # Prefer invite email; allow override only if blank body email.
+        if not (body.email or "").strip():
+            body.email = share.recipient
     fields = (f.definition or {}).get("fields") or []
     missing = [
         x["label"]
@@ -727,6 +848,9 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
     )
     db.add(sub)
     db.flush()
+    if share is not None:
+        share.status = "submitted"
+        share.submission_id = sub.id
     link_submission_document(db, f, sub)
     db.add(RecordRow(tenant_id=f.tenant_id, form_id=f.id, submission_id=sub.id, payload=body.answers))
     upsert_chunk(db, f.tenant_id, "form_submission", str(sub.id), f.name, rendered.decode(), f.language)
@@ -746,23 +870,70 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn) -> dict:
         "pipeline": pipeline.get("status"),
         "answered_folder_id": f.answered_folder_id,
         "locked": True,
+        "share_status": share.status if share is not None else None,
+        "recipient_email": share.recipient if share is not None else None,
     }
 
 
-@public.get("/{token}")
-def public_get(token: str, db: Session = Depends(get_db)):
+def _resolve_public_token(db: Session, token: str) -> tuple[Form, FormShare | None]:
+    share = db.query(FormShare).filter(FormShare.token == token).first()
+    if share:
+        f = db.get(Form, share.form_id)
+        if not f or f.status != "live":
+            raise HTTPException(404, "Form is not live")
+        return f, share
     f = db.query(Form).filter(Form.share_token == token, Form.status == "live").first()
     if not f:
         raise HTTPException(404, "Form is not live")
+    # Open link only when the form has no recipient list.
+    if _form_recipients(f):
+        raise HTTPException(404, "Form is not live")
+    return f, None
+
+
+@public.get("/{token}")
+def public_get(
+    token: str,
+    email: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    f, share = _resolve_public_token(db, token)
     out = _out(f, db)
     # Public fill only needs display labels next to submit — not builder config.
     out.pop("recipients", None)
+    out.pop("recipient_links", None)
+    if share is not None:
+        already = (share.status or "").lower() == "submitted"
+        revoked = (share.status or "").lower() == "revoked"
+        invite_email = (share.recipient or "").strip().lower()
+        hint = (email or "").strip().lower()
+        email_match = None
+        if hint:
+            email_match = hint == invite_email
+        out["personal"] = True
+        out["recipient_email"] = invite_email
+        out["share_status"] = share.status
+        out["already_submitted"] = already
+        out["link_closed"] = already or revoked
+        out["submission_id"] = share.submission_id
+        out["email_hint"] = hint or None
+        out["email_match"] = email_match
+        if already or revoked:
+            # Still return metadata so UI can show closed state without exposing fields to re-fill.
+            out["fields"] = []
+    else:
+        out["personal"] = False
+        out["recipient_email"] = None
+        out["share_status"] = None
+        out["already_submitted"] = False
+        out["link_closed"] = False
+        out["submission_id"] = None
+        out["email_hint"] = None
+        out["email_match"] = None
     return out
 
 
 @public.post("/{token}/submit")
 def public_submit(token: str, body: SubmitIn, db: Session = Depends(get_db)):
-    f = db.query(Form).filter(Form.share_token == token, Form.status == "live").first()
-    if not f:
-        raise HTTPException(404, "Form is not live")
-    return _apply_submission(db, f, body)
+    f, share = _resolve_public_token(db, token)
+    return _apply_submission(db, f, body, share=share)

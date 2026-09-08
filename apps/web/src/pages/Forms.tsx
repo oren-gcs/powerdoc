@@ -118,7 +118,16 @@ export default function Forms() {
                       className="btn"
                       onClick={async () => {
                         const r = await FormsAPI.publish(f.id);
-                        setMsg(`${t(lang, "formAlive")}: ${r.share_url}`);
+                        const links = r.recipient_links || [];
+                        if (links.length) {
+                          setMsg(
+                            `${t(lang, "formAlive")} · ${t(lang, "personalLinksReady")}: ${links
+                              .map((l: any) => `${l.email} → ${l.url}`)
+                              .join(" · ")}`
+                          );
+                        } else {
+                          setMsg(`${t(lang, "formAlive")}: ${r.share_url || t(lang, "openLinkOnlyNoRecipients")}`);
+                        }
                         load();
                       }}
                     >
@@ -129,6 +138,11 @@ export default function Forms() {
                     <a className="btn" href={f.share_url} target="_blank" rel="noreferrer">
                       {t(lang, "openLink")}
                     </a>
+                  )}
+                  {(f.recipient_links || []).length > 0 && !f.archived && (
+                    <Link className="btn" to={`/app/forms/${f.id}`} title={(f.recipient_links || []).map((l: any) => `${l.email}: ${l.url}`).join("\n")}>
+                      {t(lang, "personalLinks")} ({(f.recipient_links || []).length})
+                    </Link>
                   )}
                   {!f.locked && !f.archived && (
                     <Link className="btn" to={`/app/forms/${f.id}`}>
