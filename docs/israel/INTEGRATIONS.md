@@ -11,7 +11,7 @@ Substance from the GTM session — **targets and sequencing**, not shipped featu
 
 ### Code gap (this repo)
 
-`apps/api/app/classify.py` money regex is `USD|EUR|GBP|$|€` only — **no ₪**, no ח.פ., no `"חשבונית מס"`, no מספר הקצאה. The ingest pipeline exists; the Israel-specific step does not.
+`apps/api/app/classify.py` money regex includes **₪ / ILS / NIS** plus USD/EUR/GBP; Hebrew cues (`חשבונית`, `ח.פ.`, `מספר הקצאה`) feed classify + field harvest. **Not** a live allocation / BKMVDATA API.
 
 ## BKMVDATA — read lever
 

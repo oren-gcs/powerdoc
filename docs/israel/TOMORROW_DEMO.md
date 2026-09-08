@@ -66,7 +66,7 @@ If they raise investment first — let them.
 - [ ] API + web up; seed user works
 - [ ] Sample `.txt` invoice on the desktop
 - [ ] Safe prompt in clipboard
-- [ ] Language switcher: know that HE = 30 keys + RTL shell, not full UI
+- [ ] Language switcher: HE covers Forms/Builder/Fill/Answered chrome + RTL (not every Overview string)
 - [ ] If you must show Connectors: say **demo sandbox** out loud
 - [ ] Do **not** demo `doc-power-local-k8s` gateway work — different repo
 - [ ] Run this script **once** with a stopwatch the night before — then stop coding

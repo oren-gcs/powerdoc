@@ -29,6 +29,7 @@ export default function FillForm() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
+  const lang = form?.language || "en";
   const sendsToLabel = useMemo(() => formatSendsTo(form?.sends_to || []), [form]);
 
   useEffect(() => {
@@ -99,30 +100,30 @@ export default function FillForm() {
 
   if (done) {
     return (
-      <div className="fill-wrap">
+      <div className="fill-wrap" dir={dirFor(lang)} lang={lang}>
         <div className="paper fill-sheet">
           <FormExit fallback="/" variant="on-paper" />
-          <h1 className="mark">Received</h1>
-          <p>Logged as submission #{done.submission_id} and written into the desk database.</p>
+          <h1 className="mark">{t(lang, "received")}</h1>
+          <p>{t(lang, "receivedBody", { id: done.submission_id })}</p>
         </div>
       </div>
     );
   }
-  if (!form) return <p className="muted">{err || "Loading form…"}</p>;
+  if (!form) return <p className="muted">{err || t("en", "loadingForm")}</p>;
 
   return (
-    <div className="fill-wrap">
+    <div className="fill-wrap" dir={dirFor(lang)} lang={lang}>
       <form className="paper fill-sheet" onSubmit={submit}>
         <FormExit fallback="/" variant="on-paper" />
         <div className="eyebrow">DocFlow</div>
         <h1 className="mark">{form.name}</h1>
         <p className="muted">{form.description}</p>
         <div className="field">
-          <label>Your name</label>
+          <label>{t(lang, "yourName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Email</label>
+          <label>{t(lang, "email")}</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
         </div>
         {form.fields.map((f: any, i: number) => (
@@ -134,7 +135,7 @@ export default function FillForm() {
                 <label>
                   {i + 1}. {f.label} {f.required ? "*" : ""}
                 </label>
-                {f.help ? <p className="muted field-help">{f.help}</p> : null}
+                {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
                 {f.type === "textarea" ? (
                   <textarea
                     value={answers[f.id] || ""}
@@ -152,8 +153,8 @@ export default function FillForm() {
                 ) : f.type === "yesno" ? (
                   <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
                     <option value="">—</option>
-                    <option>yes</option>
-                    <option>no</option>
+                    <option value="yes">{t(lang, "yes")}</option>
+                    <option value="no">{t(lang, "no")}</option>
                   </select>
                 ) : f.type === "signature" ? (
                   <canvas ref={canvas} width={364} height={98} className="sign-pad" />
@@ -173,11 +174,11 @@ export default function FillForm() {
         {err && <p className="pill bad">{err}</p>}
         <div className="fill-submit-row">
           <button className="btn primary" type="submit">
-            Sign and send
+            {t(lang, "signAndSend")}
           </button>
           {sendsToLabel ? (
             <span className="sends-to-note muted" data-demo="sends-to">
-              {t(form.language || "en", "sendsTo")} {sendsToLabel}
+              {t(lang, "sendsTo")} {sendsToLabel}
             </span>
           ) : null}
         </div>

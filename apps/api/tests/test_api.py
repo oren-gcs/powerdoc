@@ -423,3 +423,50 @@ def test_ollama_status_endpoint(client):
     health = client.get("/api/v1/admin/health", headers=headers)
     assert health.status_code == 200
     assert "ollama" in health.json()
+
+
+HE_INVOICE = """חשבונית מס
+מספר חשבונית: INV-HE-42
+ספק: א.ב שיווק בע״מ
+ח.פ. 512345678
+מספר הקצאה: ALLOC-99881
+סכום: ₪1,250.50
+"""
+
+
+def test_hebrew_invoice_classify_and_fields():
+    from app.classify import classify_document, extract_fields
+
+    classified = classify_document("he-invoice.txt", HE_INVOICE)
+    assert classified["label"] == "invoice"
+    assert classified["confidence"] >= 0.5
+    fields = {f["name"]: f["value"] for f in extract_fields(HE_INVOICE, "invoice")}
+    assert fields.get("amount") == "1,250.50"
+    assert fields.get("company_id") == "512345678"
+    assert fields.get("allocation_number") == "ALLOC-99881"
+    assert fields.get("invoice_number") == "INV-HE-42"
+
+
+def test_hebrew_invoice_form_compose(client):
+    from app.engine.formgen import compose_from_prompt
+
+    prompt = "טופס אישור חשבונית עם ספק, מספר חשבונית, סכום, ח.פ. ומספר הקצאה"
+    built = compose_from_prompt(prompt, "he", use_llm=False)
+    assert built["name"] == "אישור חשבונית"
+    labels = [f["label"] for f in built["fields"]]
+    assert "ספק" in labels
+    assert "מספר חשבונית" in labels
+    assert "סכום לתשלום" in labels
+    assert "ח.פ." in labels
+    assert "מספר הקצאה" in labels
+
+    headers = auth_headers(client)
+    drafted = client.post(
+        "/api/v1/forms/compose",
+        headers=headers,
+        json={"prompt": prompt, "language": "he"},
+    )
+    assert drafted.status_code == 200, drafted.text
+    body = drafted.json()
+    assert body["language"] == "he"
+    assert any(f["label"] == "ספק" for f in body["fields"])

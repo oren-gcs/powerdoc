@@ -23,10 +23,10 @@ type FieldType = (typeof TYPES)[number];
 const CHOICE_TYPES = new Set<FieldType>(["dropdown", "radio"]);
 const PLACEHOLDER_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown"]);
 const DEFAULT_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown", "radio", "yesno"]);
-const AUTO_BY_TYPE: Partial<Record<FieldType, { value: string; label: string }[]>> = {
+const AUTO_BY_TYPE: Partial<Record<FieldType, { value: string; labelKey: string }[]>> = {
   date: [
-    { value: "", label: "None" },
-    { value: "today", label: "Today" },
+    { value: "", labelKey: "none" },
+    { value: "today", labelKey: "today" },
   ],
 };
 
@@ -61,13 +61,6 @@ function normalizeFields(list: any[] | null | undefined): any[] {
       type as FieldType
     );
   });
-}
-
-function parseChoices(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 function parseRecipients(raw: string): string[] {
@@ -160,8 +153,6 @@ export default function FormBuilder() {
   const [archived, setArchived] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
   const [archiveOpen, setArchiveOpen] = useState(false);
-  /** While typing Choices, keep raw text so commas are not stripped mid-edit. */
-  const [choicesDraft, setChoicesDraft] = useState<string | null>(null);
 
   const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
 
@@ -199,17 +190,11 @@ export default function FormBuilder() {
       setArchived(!!f.archived);
       setSubmissionCount(f.submission_count || 0);
       setSel(0);
-      setChoicesDraft(null);
       if (f.share_url) setShare(f.share_url);
     });
   }, [id]);
 
   const frozen = locked || archived;
-  const selectedId = selected?.id as string | undefined;
-
-  useEffect(() => {
-    setChoicesDraft(null);
-  }, [selectedId, sel]);
 
   const move = (from: number, to: number) => {
     if (frozen) return;
@@ -225,14 +210,13 @@ export default function FormBuilder() {
 
   const remove = (index: number) => {
     if (frozen) return;
-    const label = fields[index]?.label || `Line ${index + 1}`;
-    if (!window.confirm(`Delete field “${label}”?`)) return;
+    const label = fields[index]?.label || t(language, "lineN", { n: index + 1 });
+    if (!window.confirm(t(language, "deleteFieldConfirm", { label }))) return;
     setFields((prev) => {
       const next = prev.slice();
       next.splice(index, 1);
       return next;
     });
-    setChoicesDraft(null);
     setSel((prev) => {
       const remaining = fields.length - 1;
       if (remaining <= 0) return 0;
@@ -252,9 +236,39 @@ export default function FormBuilder() {
     });
   };
 
+  const setSelectedOptions = (options: string[]) => {
+    if (frozen) return;
+    setFields((prev) => {
+      if (sel < 0 || sel >= prev.length) return prev;
+      const next = prev.slice();
+      const cur = next[sel];
+      const defaultValue = String(cur.default || "");
+      const keepDefault = defaultValue && options.includes(defaultValue) ? defaultValue : "";
+      next[sel] = { ...cur, options, default: keepDefault };
+      return next;
+    });
+  };
+
+  const updateChoiceAt = (index: number, value: string) => {
+    const opts = Array.isArray(selected?.options) ? [...selected.options] : [];
+    opts[index] = value;
+    setSelectedOptions(opts);
+  };
+
+  const removeChoiceAt = (index: number) => {
+    const opts = Array.isArray(selected?.options) ? selected.options.slice() : [];
+    opts.splice(index, 1);
+    setSelectedOptions(opts);
+  };
+
+  const addChoice = () => {
+    const opts = Array.isArray(selected?.options) ? [...selected.options] : [];
+    opts.push("");
+    setSelectedOptions(opts);
+  };
+
   const changeSelectedType = (type: FieldType) => {
     if (frozen) return;
-    setChoicesDraft(null);
     setFields((prev) => {
       if (sel < 0 || sel >= prev.length) return prev;
       const next = prev.slice();
@@ -268,7 +282,7 @@ export default function FormBuilder() {
     const field = normalizeField(
       {
         id: nid(),
-        label: type === "heading" ? "Section" : "New field",
+        label: type === "heading" ? t(language, "section") : t(language, "newField"),
         required: type === "signature",
       },
       type as FieldType
@@ -278,7 +292,6 @@ export default function FormBuilder() {
       setSel(next.length - 1);
       return next;
     });
-    setChoicesDraft(null);
   };
 
   const toggleDeskUser = (email: string) => {
@@ -328,7 +341,6 @@ export default function FormBuilder() {
       else setDescription(asked.slice(0, 400));
       setFields(normalizeFields(r.fields || []));
       setSel(0);
-      setChoicesDraft(null);
       setThread((prev) => [
         ...prev,
         {
@@ -366,26 +378,26 @@ export default function FormBuilder() {
         <div>
           <FormExit fallback="/app/forms" variant="on-dark" />
           <div>
-            <div className="eyebrow">Anyone can build this</div>
+            <div className="eyebrow">{t(language, "builderEyebrow")}</div>
             <input
               className="ghost-title"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={frozen}
               readOnly={frozen}
-              aria-label="Form name"
+              aria-label={t(language, "formName")}
             />
             {locked && (
               <p className="muted" style={{ marginTop: 4 }}>
                 <span className="pill warn" data-demo="locked-badge">
-                  Locked · {submissionCount} answer{submissionCount === 1 ? "" : "s"}
+                  {t(language, "locked")} · {submissionCount} {submissionCount === 1 ? t(language, "submission") : t(language, "submissions")}
                 </span>{" "}
-                Definition frozen after the first submission.
+                {t(language, "lockedFrozen")}
                 {archived && (
                   <>
                     {" "}
                     <span className="pill" data-demo="archived-badge">
-                      Archived
+                      {t(language, "archived")}
                     </span>
                   </>
                 )}
@@ -394,9 +406,9 @@ export default function FormBuilder() {
             {!locked && archived && (
               <p className="muted" style={{ marginTop: 4 }}>
                 <span className="pill" data-demo="archived-badge">
-                  Archived
+                  {t(language, "archived")}
                 </span>{" "}
-                Copy to a new form or unarchive to edit.
+                {t(language, "archivedHint")}
               </p>
             )}
           </div>
@@ -404,7 +416,7 @@ export default function FormBuilder() {
         <div className="row-actions">
           {locked && formId && (
             <button className="btn primary" data-demo="open-answered" onClick={() => nav(`/app/forms/${formId}/answered`)}>
-              Answered folder
+              {t(language, "answeredFolder")}
             </button>
           )}
           {formId && (
@@ -414,19 +426,19 @@ export default function FormBuilder() {
               onClick={async () => {
                 try {
                   const copy = await FormsAPI.copy(formId);
-                  setMsg(`Copied to new unlocked form: ${copy.name}`);
+                  setMsg(`${t(language, "copy")}: ${copy.name}`);
                   nav(`/app/forms/${copy.id}`);
                 } catch (e: any) {
                   setMsg(e.message);
                 }
               }}
             >
-              Copy to new form
+              {t(language, "copy")}
             </button>
           )}
           {formId && !archived && (
             <button className="btn" data-demo="archive-form" onClick={() => setArchiveOpen(true)}>
-              Archive
+              {t(language, "archive")}
             </button>
           )}
           {formId && archived && (
@@ -437,16 +449,16 @@ export default function FormBuilder() {
                 try {
                   const r = await FormsAPI.unarchive(formId);
                   setArchived(!!r.archived);
-                  setMsg("Unarchived as draft");
+                  setMsg(t(language, "unarchive"));
                 } catch (e: any) {
                   setMsg(e.message);
                 }
               }}
             >
-              Unarchive
+              {t(language, "unarchive")}
             </button>
           )}
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={frozen} aria-label="Language">
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={frozen} aria-label={t(language, "language")}>
             <option value="en">English</option>
             <option value="he">עברית</option>
             <option value="ar">العربية</option>
@@ -454,7 +466,7 @@ export default function FormBuilder() {
             <option value="fr">Français</option>
           </select>
           <button className="btn" onClick={save} disabled={frozen}>
-            Save
+            {t(language, "save")}
           </button>
           <button
             className="btn primary"
@@ -476,14 +488,14 @@ export default function FormBuilder() {
               }
             }}
           >
-            Make alive
+            {t(language, "makeAlive")}
           </button>
         </div>
       </div>
       {archiveOpen && formId && (
         <div className="card archive-panel" data-demo="archive-panel" style={{ marginBottom: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Archive form</h3>
-          <p className="muted">Locked definitions cannot be edited or deleted — archive or copy instead.</p>
+          <h3 style={{ marginTop: 0 }}>{t(language, "archiveForm")}</h3>
+          <p className="muted">{t(language, "archiveHint")}</p>
           <div className="row-actions">
             <button
               className="btn primary"
@@ -493,13 +505,13 @@ export default function FormBuilder() {
                   const r = await FormsAPI.archive(formId, true);
                   setArchived(!!r.archived);
                   setArchiveOpen(false);
-                  setMsg("Archived with answered data");
+                  setMsg(t(language, "keepAnswered"));
                 } catch (e: any) {
                   setMsg(e.message);
                 }
               }}
             >
-              Keep answered data
+              {t(language, "keepAnswered")}
             </button>
             <button
               className="btn"
@@ -509,16 +521,16 @@ export default function FormBuilder() {
                   const r = await FormsAPI.archive(formId, false);
                   setArchived(!!r.archived);
                   setArchiveOpen(false);
-                  setMsg("Archived form only — answers stay in Answered folder / documents");
+                  setMsg(t(language, "archiveFormOnly"));
                 } catch (e: any) {
                   setMsg(e.message);
                 }
               }}
             >
-              Archive form only (answers stay in Answered folder / documents)
+              {t(language, "archiveFormOnly")}
             </button>
             <button className="btn ghost" onClick={() => setArchiveOpen(false)}>
-              Cancel
+              {t(language, "cancel")}
             </button>
           </div>
         </div>
@@ -528,18 +540,18 @@ export default function FormBuilder() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !frozen && compose()}
-          placeholder="Tell the desk what this form is for…"
+          placeholder={t(language, "chatPlaceholder")}
           disabled={frozen}
         />
         <button className="btn primary" data-demo="compose" onClick={compose} disabled={busy || frozen}>
-          {busy ? "Listening…" : "Draft with chat"}
+          {busy ? t(language, "listening") : t(language, "draftWithChat")}
         </button>
       </div>
       {thread.length > 0 && (
         <div className="chat-thread" data-demo="chat-reply">
           {thread.map((m, i) => (
             <div key={i} className={`bubble ${m.role}`}>
-              <div className="eyebrow">{m.role === "user" ? "You" : m.provider === "ollama" ? "Ollama" : "Desk"}</div>
+              <div className="eyebrow">{m.role === "user" ? t(language, "you") : m.provider === "ollama" ? "Ollama" : t(language, "deskChat")}</div>
               <p>{m.text}</p>
               {m.role === "assistant" && m.knowledge && !m.knowledge.applied && (
                 <p className="pill warn">
@@ -569,22 +581,22 @@ export default function FormBuilder() {
         <div className="eyebrow">{t(language, "formOptions")}</div>
         <div className="form-options-grid">
           <div className="field">
-            <label>Topic</label>
+            <label>{t(language, "topic")}</label>
             <input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g. class, invoice, vendor"
+              placeholder={t(language, "topicPlaceholder")}
               disabled={frozen}
               readOnly={frozen}
               data-demo="form-topic"
             />
           </div>
           <div className="field">
-            <label>Description</label>
+            <label>{t(language, "description")}</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Shown on the live form"
+              placeholder={t(language, "descriptionPlaceholder")}
               disabled={frozen}
               readOnly={frozen}
               data-demo="form-description"
@@ -631,10 +643,10 @@ export default function FormBuilder() {
       </div>
       <div className="builder-grid">
         <div className="card palette">
-          <div className="eyebrow">Fields</div>
+          <div className="eyebrow">{t(language, "fields")}</div>
           {TYPES.map((ty) => (
             <button key={ty} className="btn" onClick={() => add(ty)} disabled={frozen} data-demo={`add-${ty}`}>
-              {ty}
+              {t(language, `type_${ty}`)}
             </button>
           ))}
         </div>
@@ -653,19 +665,16 @@ export default function FormBuilder() {
                   if (frozen) return;
                   move(Number(e.dataTransfer.getData("text/plain")), i);
                 }}
-                onClick={() => {
-                  setSel(i);
-                  setChoicesDraft(null);
-                }}
+                onClick={() => setSel(i)}
                 data-demo="paper-row"
               >
                 <span className="line-no">{i + 1}</span>
                 <div className="paper-row-main">
                   <div className="mono paper-row-type">{f.type}</div>
                   <strong className="paper-label" dir="auto" data-demo="paper-label">
-                    {f.label || "Untitled"}
+                    {f.label || t(language, "newField")}
                   </strong>
-                  {f.required ? <span className="pill bad">required</span> : null}
+                  {f.required ? <span className="pill bad">{t(language, "required")}</span> : null}
                   {snippet ? (
                     <div className="paper-options" dir="auto" data-demo="paper-options">
                       {snippet}
@@ -697,8 +706,8 @@ export default function FormBuilder() {
                     type="button"
                     className="btn paper-icon-btn danger"
                     data-demo="delete-field-row"
-                    aria-label={`Delete field ${f.label || i + 1}`}
-                    title={frozen ? "Form is locked" : "Delete field"}
+                    aria-label={`${t(language, "deleteField")} ${f.label || i + 1}`}
+                    title={frozen ? t(language, "locked") : t(language, "deleteField")}
                     onClick={() => remove(i)}
                     disabled={frozen}
                   >
@@ -708,32 +717,32 @@ export default function FormBuilder() {
               </div>
             );
           })}
-          {!fields.length && <p className="muted">Ask the chat, or tap a field type.</p>}
+          {!fields.length && <p className="muted">{t(language, "emptyPaper")}</p>}
         </div>
         <aside className={`card field-inspector ${selected ? "has-selection" : ""}`} data-demo="field-inspector">
-          <div className="eyebrow">Line {selected ? sel + 1 : "—"}</div>
-          <h3 className="inspector-title">{selected ? "Field configuration" : "Select a field"}</h3>
+          <div className="eyebrow">{selected ? t(language, "lineN", { n: sel + 1 }) : t(language, "fieldDetails")}</div>
+          <h3 className="inspector-title">{selected ? t(language, "fieldDetails") : t(language, "selectFieldHint")}</h3>
           {selected ? (
             <>
-              <p className="muted inspector-hint">Editing “{selected.label || "Untitled"}”</p>
+              <p className="muted inspector-hint">{selected.label || t(language, "newField")}</p>
               <div className="field">
-                <label>Type</label>
+                <label>{t(language, "type")}</label>
                 <select
                   value={selected.type}
                   disabled={frozen}
-                  aria-label="Field type"
+                  aria-label={t(language, "type")}
                   data-demo="field-type"
                   onChange={(e) => changeSelectedType(e.target.value as FieldType)}
                 >
                   {TYPES.map((ty) => (
                     <option key={ty} value={ty}>
-                      {ty}
+                      {t(language, `type_${ty}`)}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label>Label</label>
+                <label>{t(language, "label")}</label>
                 <input
                   value={selected.label || ""}
                   disabled={frozen}
@@ -752,57 +761,94 @@ export default function FormBuilder() {
                     data-demo="field-required"
                     onChange={(e) => patchSelected({ required: e.target.checked })}
                   />{" "}
-                  Mandatory
+                  {t(language, "mandatory")}
                 </label>
               )}
               <div className="field">
-                <label>Help text</label>
+                <label>{t(language, "helpText")}</label>
                 <input
                   value={selected.help || ""}
                   disabled={frozen}
                   readOnly={frozen}
-                  placeholder="Shown under the label"
+                  placeholder={t(language, "helpPlaceholder")}
                   data-demo="field-help"
                   onChange={(e) => patchSelected({ help: e.target.value })}
                 />
               </div>
               {showPlaceholder && (
                 <div className="field">
-                  <label>Placeholder</label>
+                  <label>{t(language, "placeholder")}</label>
                   <input
                     value={selected.placeholder || ""}
                     disabled={frozen}
                     readOnly={frozen}
-                    placeholder="Hint inside the input"
+                    placeholder={t(language, "placeholder")}
                     data-demo="field-placeholder"
                     onChange={(e) => patchSelected({ placeholder: e.target.value })}
                   />
                 </div>
               )}
               {showChoices && (
-                <div className="field">
-                  <label>Choices (comma)</label>
-                  <input
-                    value={choicesDraft ?? (selected.options || []).join(", ")}
-                    disabled={frozen}
-                    readOnly={frozen}
-                    dir="auto"
-                    data-demo="field-choices"
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setChoicesDraft(raw);
-                      patchSelected({ options: parseChoices(raw) });
-                    }}
-                    onBlur={() => setChoicesDraft(null)}
-                  />
-                  <div className="muted field-help" data-demo="choices-preview">
-                    {(selected.options || []).filter(Boolean).join(", ") || "no choices yet"}
+                <div className="field" data-demo="field-choices">
+                  <label>{t(language, "choices")}</label>
+                  <div className="choice-list">
+                    {(selected.options || []).length === 0 ? (
+                      <div className="choice-empty">
+                        <p className="muted field-help" data-demo="choices-preview">
+                          {t(language, "noChoices")}
+                        </p>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={frozen}
+                          data-demo="add-choice"
+                          onClick={addChoice}
+                        >
+                          {t(language, "addChoice")}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {(selected.options || []).map((opt: string, oi: number) => (
+                          <div className="choice-row" key={`choice-${oi}`}>
+                            <input
+                              value={opt}
+                              disabled={frozen}
+                              readOnly={frozen}
+                              dir="auto"
+                              aria-label={`${t(language, "choices")} ${oi + 1}`}
+                              data-demo="choice-input"
+                              onChange={(e) => updateChoiceAt(oi, e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={frozen}
+                              data-demo="remove-choice"
+                              aria-label={t(language, "removeChoice")}
+                              onClick={() => removeChoiceAt(oi)}
+                            >
+                              {t(language, "removeChoice")}
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={frozen}
+                          data-demo="add-choice"
+                          onClick={addChoice}
+                        >
+                          {t(language, "addChoice")}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
               {autoChoices && (
                 <div className="field">
-                  <label>Auto-fill</label>
+                  <label>{t(language, "autoFill")}</label>
                   <select
                     value={selected.auto || ""}
                     disabled={frozen}
@@ -811,7 +857,7 @@ export default function FormBuilder() {
                   >
                     {autoChoices.map((opt) => (
                       <option key={opt.value || "none"} value={opt.value}>
-                        {opt.label}
+                        {t(language, opt.labelKey)}
                       </option>
                     ))}
                   </select>
@@ -819,7 +865,7 @@ export default function FormBuilder() {
               )}
               {showDefault && (
                 <div className="field">
-                  <label>Default value</label>
+                  <label>{t(language, "defaultValue")}</label>
                   {selected.type === "yesno" ? (
                     <select
                       value={selected.default || ""}
@@ -828,8 +874,8 @@ export default function FormBuilder() {
                       onChange={(e) => patchSelected({ default: e.target.value })}
                     >
                       <option value="">—</option>
-                      <option value="yes">yes</option>
-                      <option value="no">no</option>
+                      <option value="yes">{t(language, "yes")}</option>
+                      <option value="no">{t(language, "no")}</option>
                     </select>
                   ) : showChoices ? (
                     <select
@@ -865,13 +911,13 @@ export default function FormBuilder() {
                   disabled={frozen}
                   onClick={() => remove(sel)}
                 >
-                  Delete field
+                  {t(language, "deleteField")}
                 </button>
               </div>
             </>
           ) : (
             <p className="muted" data-demo="field-inspector-empty">
-              Tap a row on the paper to configure label, type, and options.
+              {t(language, "selectFieldHint")}
             </p>
           )}
         </aside>

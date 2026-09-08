@@ -43,51 +43,67 @@ def _norm(text: str) -> str:
     return t
 
 
+def _he(language: str) -> bool:
+    return (language or "").lower().startswith("he")
+
+
+def _L(language: str, en: str, he: str) -> str:
+    return he if _he(language) else en
+
+
 def split_clauses(prompt: str) -> list[str]:
-    parts = re.split(r"[,;\n]|(?:\s+and\s+)", prompt)
+    parts = re.split(r"[,;\n]|(?:\s+and\s+)|(?:\s+ו)", prompt)
     return [re.sub(r"\s+", " ", p).strip(" .") for p in parts if p and p.strip(" .")]
 
 
-def interpret_clause(clause: str) -> tuple[dict | None, str, str]:
+def interpret_clause(clause: str, language: str = "en") -> tuple[dict | None, str, str]:
     raw = clause.strip()
     c = _norm(raw)
     if not c:
         return None, "", ""
 
-    purpose = any(w in c for w in ("summary", "form for", "to students", "for students", "day summary", "class summary"))
-    if purpose and not any(w in c for w in ("rate", "signature", "email", "topic", "attendance", "in class")):
+    purpose = any(w in c for w in ("summary", "form for", "to students", "for students", "day summary", "class summary", "סיכום"))
+    if purpose and not any(w in c for w in ("rate", "signature", "email", "topic", "attendance", "in class", "חתימה", "אימייל")):
         return None, f"form purpose: {raw}", ""
 
-    if "date" in c and any(w in c for w in ("auto", "automatic", "today", "now")):
-        return _f("date", "Date", True, help_="Filled automatically with today", auto="today"), "date (automatic today)", ""
-    if re.search(r"\bdate\b", c) and "due" not in c:
-        return _f("date", "Date", True), "date", ""
+    if ("date" in c or "תאריך" in c) and any(w in c for w in ("auto", "automatic", "today", "now", "היום", "אוטומט")):
+        return (
+            _f("date", _L(language, "Date", "תאריך"), True, help_=_L(language, "Filled automatically with today", "ממולא אוטומטית להיום"), auto="today"),
+            "date (automatic today)",
+            "",
+        )
+    if (re.search(r"\bdate\b", c) or "תאריך" in c) and "due" not in c:
+        return _f("date", _L(language, "Date", "תאריך"), True), "date", ""
 
     if any(w in c for w in ("signature", "sign off", "sign-off", "חתימה")):
-        return _f("signature", "Signature", True), "signature (mandatory)", ""
+        return _f("signature", _L(language, "Signature", "חתימה"), True), "signature (mandatory)", ""
 
-    if "email" in c or "e-mail" in c or "אימייל" in c:
-        return _f("email", "Email", True, help_="Filled by the person completing the form"), "email (by the user)", ""
+    if "email" in c or "e-mail" in c or "אימייל" in c or "דוא״ל" in c or 'דוא"ל' in c:
+        return (
+            _f("email", _L(language, "Email", "אימייל"), True, help_=_L(language, "Filled by the person completing the form", "ממולא על ידי ממלא הטופס")),
+            "email (by the user)",
+            "",
+        )
 
-    if any(w in c for w in ("in class", "attendance", "present", "was the student", "did the student")):
-        return _f("yesno", "Was the student in class?", True), "attendance (was the student in class)", ""
+    if any(w in c for w in ("in class", "attendance", "present", "was the student", "did the student", "נוכחות")):
+        return _f("yesno", _L(language, "Was the student in class?", "האם התלמיד היה בשיעור?"), True), "attendance (was the student in class)", ""
 
-    if "topic" in c or "explained" in c or "lesson" in c:
-        return _f("textarea", "Which topic was best explained?", True), "best-explained topic", ""
+    if "topic" in c or "explained" in c or "lesson" in c or "נושא" in c:
+        return _f("textarea", _L(language, "Which topic was best explained?", "איזה נושא הוסבר הכי טוב?"), True), "best-explained topic", ""
 
-    if any(w in c for w in ("rate", "rating", "stars", "score")) and any(w in c for w in ("class", "today", "lesson", "session")):
-        return _f("radio", "Rate today's class", True, ["1", "2", "3", "4", "5"]), "rate today's class (1–5)", ""
-    if "rate" in c or "rating" in c:
-        return _f("radio", "Rating", True, ["1", "2", "3", "4", "5"]), "rating", ""
+    if any(w in c for w in ("rate", "rating", "stars", "score", "דירוג")) and any(w in c for w in ("class", "today", "lesson", "session", "שיעור")):
+        return _f("radio", _L(language, "Rate today's class", "דרגו את השיעור היום"), True, ["1", "2", "3", "4", "5"]), "rate today's class (1–5)", ""
+    if "rate" in c or "rating" in c or "דירוג" in c:
+        return _f("radio", _L(language, "Rating", "דירוג"), True, ["1", "2", "3", "4", "5"]), "rating", ""
 
     if "dropdown" in c or "רשימה" in c:
-        return _f("dropdown", "Choose one", False, ["A", "B", "C"]), "dropdown", ""
+        return _f("dropdown", _L(language, "Choose one", "בחרו אחת"), False, ["A", "B", "C"]), "dropdown", ""
 
     if any(w in c for w in ("phone", "טלפון")):
-        return _f("phone", "Phone"), "phone", ""
+        return _f("phone", _L(language, "Phone", "טלפון")), "phone", ""
 
-    if len(c.split()) <= 3 and any(w in c for w in ("name", "full name", "student name")):
-        return _f("text", "Student name", True), "student name", ""
+    if len(c.split()) <= 3 and any(w in c for w in ("name", "full name", "student name", "שם")):
+        return _f("text", _L(language, "Student name", "שם התלמיד"), True), "student name", ""
 
     if len(c) < 8:
         return None, "", raw
@@ -98,7 +114,7 @@ def pick_topic(prompt: str) -> str:
     p = _norm(prompt)
     if any(w in p for w in ("student", "class", "summary", "תלמיד", "שיעור")):
         return "class"
-    if any(w in p for w in ("invoice", "חשבונית", "ap ", "vendor bill")):
+    if any(w in p for w in ("invoice", "חשבונית", "ap ", "vendor bill", "הקצאה", "ח.פ")):
         return "invoice"
     if any(w in p for w in ("vendor", "ספק", "supplier", "onboard")):
         return "vendor"
@@ -109,7 +125,24 @@ def pick_topic(prompt: str) -> str:
     return "generic"
 
 
-def harvest_fields(prompt: str) -> tuple[list[dict], list[str]]:
+def _invoice_prompt(c: str) -> bool:
+    return any(
+        w in c
+        for w in (
+            "invoice",
+            "חשבונית",
+            "חשבונית מס",
+            "הקצאה",
+            "מספר הקצאה",
+            "ח.פ",
+            "סכום",
+            "₪",
+            "ils",
+        )
+    )
+
+
+def harvest_fields(prompt: str, language: str = "en") -> tuple[list[dict], list[str]]:
     c = _norm(prompt)
     fields: list[dict] = []
     understood: list[str] = []
@@ -120,33 +153,59 @@ def harvest_fields(prompt: str) -> tuple[list[dict], list[str]]:
         fields.append(field)
         understood.append(note)
 
-    if any(w in c for w in ("summary", "student", "students", "class summary")):
+    if any(w in c for w in ("summary", "student", "students", "class summary", "סיכום", "תלמיד")):
         understood.append("form purpose: day summary for students")
-    if "date" in c and any(w in c for w in ("auto", "automatic", "today", "now")):
-        add(_f("date", "Date", True, help_="Filled automatically with today", auto="today"), "date (automatic today)")
-    elif re.search(r"\bdate\b", c):
-        add(_f("date", "Date", True), "date")
-    if "email" in c or "e-mail" in c or "אימייל" in c:
-        add(_f("email", "Email", True, help_="Filled by the person completing the form"), "email (by the user)")
-    if any(w in c for w in ("in class", "attendance", "was the student", "did the student")):
-        add(_f("yesno", "Was the student in class?", True), "attendance (was the student in class)")
-    if "topic" in c or "explained" in c:
-        add(_f("textarea", "Which topic was best explained?", True), "best-explained topic")
-    if ("rate" in c or "rating" in c) and any(w in c for w in ("class", "today", "lesson", "session")):
-        add(_f("radio", "Rate today's class", True, ["1", "2", "3", "4", "5"]), "rate today's class (1–5)")
-    elif "rate" in c or "rating" in c:
-        add(_f("radio", "Rating", True, ["1", "2", "3", "4", "5"]), "rating")
-    if any(w in c for w in ("signature", "sign off", "sign-off", "חתימה")):
-        add(_f("signature", "Signature", True), "signature (mandatory)")
-    if "dropdown" in c or "department" in c or "רשימה" in c:
+    if ("date" in c or "תאריך" in c) and any(w in c for w in ("auto", "automatic", "today", "now", "היום", "אוטומט")):
         add(
-            _f("dropdown", "Department" if "department" in c else "Choose one", True, ["Finance", "Operations", "Legal"] if "department" in c else ["A", "B", "C"]),
+            _f("date", _L(language, "Date", "תאריך"), True, help_=_L(language, "Filled automatically with today", "ממולא אוטומטית להיום"), auto="today"),
+            "date (automatic today)",
+        )
+    elif re.search(r"\bdate\b", c) or "תאריך" in c:
+        add(_f("date", _L(language, "Date", "תאריך"), True), "date")
+    if "email" in c or "e-mail" in c or "אימייל" in c or "דוא״ל" in c or 'דוא"ל' in c:
+        add(
+            _f("email", _L(language, "Email", "אימייל"), True, help_=_L(language, "Filled by the person completing the form", "ממולא על ידי ממלא הטופס")),
+            "email (by the user)",
+        )
+    if any(w in c for w in ("in class", "attendance", "was the student", "did the student", "נוכחות")):
+        add(_f("yesno", _L(language, "Was the student in class?", "האם התלמיד היה בשיעור?"), True), "attendance (was the student in class)")
+    if "topic" in c or "explained" in c or "נושא" in c:
+        add(_f("textarea", _L(language, "Which topic was best explained?", "איזה נושא הוסבר הכי טוב?"), True), "best-explained topic")
+    if ("rate" in c or "rating" in c or "דירוג" in c) and any(w in c for w in ("class", "today", "lesson", "session", "שיעור")):
+        add(_f("radio", _L(language, "Rate today's class", "דרגו את השיעור היום"), True, ["1", "2", "3", "4", "5"]), "rate today's class (1–5)")
+    elif "rate" in c or "rating" in c or "דירוג" in c:
+        add(_f("radio", _L(language, "Rating", "דירוג"), True, ["1", "2", "3", "4", "5"]), "rating")
+    if any(w in c for w in ("signature", "sign off", "sign-off", "חתימה")):
+        add(_f("signature", _L(language, "Signature", "חתימה"), True), "signature (mandatory)")
+    if "dropdown" in c or "department" in c or "רשימה" in c or "מחלקה" in c:
+        dept = "department" in c or "מחלקה" in c
+        add(
+            _f(
+                "dropdown",
+                _L(language, "Department" if dept else "Choose one", "מחלקה" if dept else "בחרו אחת"),
+                True,
+                (_L(language, "Finance", "כספים"), _L(language, "Operations", "תפעול"), _L(language, "Legal", "משפטית"))
+                if dept
+                else ["A", "B", "C"],
+            ),
             "dropdown",
         )
-    if "invoice" in c or "חשבונית" in c:
-        add(_f("text", "Vendor", True), "vendor")
-        add(_f("text", "Invoice number", True), "invoice number")
-        add(_f("number", "Amount due", True), "amount")
+    if _invoice_prompt(c):
+        add(_f("text", _L(language, "Vendor", "ספק"), True), "vendor")
+        add(_f("text", _L(language, "Invoice number", "מספר חשבונית"), True), "invoice number")
+        add(_f("number", _L(language, "Amount due", "סכום לתשלום"), True), "amount")
+        if any(w in c for w in ("ח.פ", "חפ", "company id", "עוסק")):
+            add(_f("text", _L(language, "Company ID (ח.פ.)", "ח.פ."), True), "company id")
+        if any(w in c for w in ("הקצאה", "allocation")):
+            add(
+                _f(
+                    "text",
+                    _L(language, "Allocation number", "מספר הקצאה"),
+                    False,
+                    help_=_L(language, "Recognized when present — not a live allocation API", "מזוהה כשמופיע — לא API הקצאה חי"),
+                ),
+                "allocation number",
+            )
     return fields, understood
 
 
@@ -167,8 +226,8 @@ def relevant_chunks(prompt: str, chunks: list[dict]) -> list[dict]:
     if any(w in c for w in ("student", "students", "lesson", "roster", "attendance")):
         need = ("student", "students", "roster", "lesson", "attendance", "classroom", "teacher", "syllabus")
         return [ch for ch in chunks if any(w in hay(ch) for w in need)]
-    if "invoice" in c or "vendor" in c:
-        need = ("invoice", "vendor", "amount due", "bill to")
+    if "invoice" in c or "vendor" in c or "חשבונית" in c or "ספק" in c:
+        need = ("invoice", "vendor", "amount due", "bill to", "חשבונית", "ספק", "הקצאה", "ח.פ")
         return [ch for ch in chunks if any(w in hay(ch) for w in need)]
     return chunks
 
@@ -221,11 +280,35 @@ def compose_from_prompt(
     model: str | None = None,
 ) -> dict:
     chunks = chunks or []
-    fields, understood = harvest_fields(prompt)
+    fields, understood = harvest_fields(prompt, language)
     unclear: list[str] = []
     name = guess_name(prompt, language)
     fields = [_f("heading", name)] + fields
-    keywords = ("date", "email", "signature", "rate", "class", "topic", "student", "summary", "dropdown", "invoice", "attendance")
+    keywords = (
+        "date",
+        "email",
+        "signature",
+        "rate",
+        "class",
+        "topic",
+        "student",
+        "summary",
+        "dropdown",
+        "invoice",
+        "attendance",
+        "חשבונית",
+        "חתימה",
+        "אימייל",
+        "תאריך",
+        "ספק",
+        "הקצאה",
+        "ח.פ",
+        "תלמיד",
+        "שיעור",
+        "נושא",
+        "דירוג",
+        "נוכחות",
+    )
     for clause in split_clauses(prompt):
         cl = _norm(clause)
         if clause and not any(k in cl for k in keywords) and len(clause) > 10:

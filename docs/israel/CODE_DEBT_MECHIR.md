@@ -17,9 +17,9 @@ Session estimate to a credible sellable wedge: **~10–12 weeks** total. That is
 |---|---|---|
 | Connectors | `SANDBOX` fake Drive/365 sync | Real OAuth + file pull |
 | Invoice health check | Manual demo narrative | Checklist / exposure report CPAs pay ₪8–15k for |
-| Hebrew OCR / מספר הקצאה / BKMVDATA | Not shipped (`classify.py` still USD/EUR/$) | Read path that survives a CPA review |
+| Hebrew OCR / מספר הקצאה / BKMVDATA | Heuristics recognize ₪/ILS, חשבונית, ח.פ., מספר הקצאה on ingest; **no** live allocation API | CPA-grade validation + BKMVDATA write path |
 | Write-back | None | morning/iCount first; Priority OData later |
-| i18n | **30** HE keys; RTL on desk + public form | Product-copy coverage beyond nav/chrome |
+| i18n | ~130 HE keys on Forms / Builder / Fill / Answered / Connectors + RTL desk | Remaining Overview/Documents/Admin product copy |
 | Field channels | Public web fill | WhatsApp bridge; offline PWA |
 | Ram-Control | Narrative only | Read-only SQL views / feed pattern with a design partner |
 | Context fill (level 2) | RAG shapes definition only | Pre-fill site / contractor / superintendent on instances |

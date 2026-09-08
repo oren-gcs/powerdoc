@@ -87,6 +87,8 @@ export default function AppShell() {
 
   const changeLang = async (code: string) => {
     setLang(code);
+    localStorage.setItem("docflow.lang", code);
+    window.dispatchEvent(new Event("docflow:lang"));
     try {
       await api(`/api/v1/auth/me?locale=${code}`, { method: "PATCH" });
     } catch {

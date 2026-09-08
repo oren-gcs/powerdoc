@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FormsAPI } from "../api";
+import { t, useDeskLang } from "../i18n";
 
 export default function Forms() {
   const nav = useNavigate();
+  const lang = useDeskLang();
   const [rows, setRows] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [archiveFor, setArchiveFor] = useState<number | null>(null);
@@ -15,7 +17,7 @@ export default function Forms() {
   const copyForm = async (id: number) => {
     try {
       const copy = await FormsAPI.copy(id);
-      setMsg(`Copied to new unlocked form: ${copy.name}`);
+      setMsg(`${t(lang, "copy")}: ${copy.name}`);
       load();
       nav(`/app/forms/${copy.id}`);
     } catch (e: any) {
@@ -27,11 +29,7 @@ export default function Forms() {
     try {
       const r = await FormsAPI.archive(id, keep_answers);
       setArchiveFor(null);
-      setMsg(
-        keep_answers
-          ? `Archived “${r.name}” with answered data under Archive.`
-          : `Archived “${r.name}” — answers stay in Answered folder / documents.`
-      );
+      setMsg(keep_answers ? `${t(lang, "archive")} · ${r.name}` : `${t(lang, "archiveFormOnly")} · ${r.name}`);
       load();
     } catch (e: any) {
       setMsg(e.message);
@@ -41,7 +39,7 @@ export default function Forms() {
   const unarchiveForm = async (id: number) => {
     try {
       const r = await FormsAPI.unarchive(id);
-      setMsg(`Unarchived “${r.name}” as draft.`);
+      setMsg(`${t(lang, "unarchive")}: ${r.name}`);
       load();
     } catch (e: any) {
       setMsg(e.message);
@@ -52,29 +50,29 @@ export default function Forms() {
     <>
       <div className="topbar">
         <div>
-          <div className="eyebrow">Paper that can move</div>
+          <div className="eyebrow">{t(lang, "formsEyebrow")}</div>
           <h1 className="mark" style={{ fontSize: 32, margin: 0 }}>
-            Forms
+            {t(lang, "forms")}
           </h1>
         </div>
         <Link className="btn primary" to="/app/forms/new">
-          New form
+          {t(lang, "newForm")}
         </Link>
       </div>
       {msg && <p className="pill ok">{msg}</p>}
       {archiveFor != null && (
         <div className="card archive-panel" data-demo="archive-panel">
-          <h3 style={{ marginTop: 0 }}>Archive form</h3>
-          <p className="muted">Choose how answered data is handled. Definition stays frozen either way.</p>
+          <h3 style={{ marginTop: 0 }}>{t(lang, "archiveForm")}</h3>
+          <p className="muted">{t(lang, "archiveHint")}</p>
           <div className="row-actions">
             <button className="btn primary" data-demo="archive-keep" onClick={() => archiveForm(archiveFor, true)}>
-              Keep answered data
+              {t(lang, "keepAnswered")}
             </button>
             <button className="btn" data-demo="archive-form-only" onClick={() => archiveForm(archiveFor, false)}>
-              Archive form only (answers stay in Answered folder / documents)
+              {t(lang, "archiveFormOnly")}
             </button>
             <button className="btn ghost" onClick={() => setArchiveFor(null)}>
-              Cancel
+              {t(lang, "cancel")}
             </button>
           </div>
         </div>
@@ -83,9 +81,9 @@ export default function Forms() {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Language</th>
-              <th>Status</th>
+              <th>{t(lang, "name")}</th>
+              <th>{t(lang, "language")}</th>
+              <th>{t(lang, "status")}</th>
               <th></th>
             </tr>
           </thead>
@@ -96,12 +94,12 @@ export default function Forms() {
                   <Link to={f.locked ? `/app/forms/${f.id}/answered` : `/app/forms/${f.id}`}>{f.name}</Link>
                   {f.locked && (
                     <span className="pill warn" style={{ marginInlineStart: 8 }} data-demo="locked-badge">
-                      Locked · {f.submission_count}
+                      {t(lang, "locked")} · {f.submission_count}
                     </span>
                   )}
                   {f.archived && (
                     <span className="pill" style={{ marginInlineStart: 8 }} data-demo="archived-badge">
-                      Archived
+                      {t(lang, "archived")}
                     </span>
                   )}
                 </td>
@@ -112,7 +110,7 @@ export default function Forms() {
                 <td className="row-actions">
                   {f.locked && (
                     <Link className="btn primary" to={`/app/forms/${f.id}/answered`} data-demo="open-answered">
-                      Answered
+                      {t(lang, "answered")}
                     </Link>
                   )}
                   {f.status !== "live" && !f.locked && !f.archived && (
@@ -120,33 +118,33 @@ export default function Forms() {
                       className="btn"
                       onClick={async () => {
                         const r = await FormsAPI.publish(f.id);
-                        setMsg(`Alive: ${r.share_url}`);
+                        setMsg(`${t(lang, "formAlive")}: ${r.share_url}`);
                         load();
                       }}
                     >
-                      Make alive
+                      {t(lang, "makeAlive")}
                     </button>
                   )}
                   {f.share_url && !f.archived && (
                     <a className="btn" href={f.share_url} target="_blank" rel="noreferrer">
-                      Open link
+                      {t(lang, "openLink")}
                     </a>
                   )}
                   {!f.locked && !f.archived && (
                     <Link className="btn" to={`/app/forms/${f.id}`}>
-                      Edit
+                      {t(lang, "edit")}
                     </Link>
                   )}
                   <button className="btn" data-demo="copy-form" onClick={() => copyForm(f.id)}>
-                    Copy to new form
+                    {t(lang, "copy")}
                   </button>
                   {f.archived ? (
                     <button className="btn" data-demo="unarchive-form" onClick={() => unarchiveForm(f.id)}>
-                      Unarchive
+                      {t(lang, "unarchive")}
                     </button>
                   ) : (
                     <button className="btn" data-demo="archive-form" onClick={() => setArchiveFor(f.id)}>
-                      Archive
+                      {t(lang, "archive")}
                     </button>
                   )}
                   {!f.locked && !f.archived && (
@@ -155,14 +153,14 @@ export default function Forms() {
                       onClick={async () => {
                         try {
                           await FormsAPI.remove(f.id);
-                          setMsg("Deleted");
+                          setMsg(t(lang, "delete"));
                           load();
                         } catch (e: any) {
                           setMsg(e.message);
                         }
                       }}
                     >
-                      Delete
+                      {t(lang, "delete")}
                     </button>
                   )}
                   {(f.recipients || []).length > 0 && (

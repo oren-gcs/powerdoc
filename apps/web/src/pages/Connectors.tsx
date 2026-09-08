@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AgentAPI, ConnectAPI } from "../api";
+import { t, useDeskLang } from "../i18n";
 
 const SOURCES = [
   {
@@ -23,6 +24,7 @@ const SOURCES = [
 ];
 
 export default function Connectors() {
+  const lang = useDeskLang();
   const [rows, setRows] = useState<any[]>([]);
   const [msg, setMsg] = useState("");
   const [ollama, setOllama] = useState<any>(null);
@@ -53,14 +55,11 @@ export default function Connectors() {
 
   return (
     <>
-      <div className="eyebrow">Cloud + local context · Demo sandbox</div>
+      <div className="eyebrow">{t(lang, "connectorsEyebrow")}</div>
       <h1 className="mark" style={{ fontSize: 32 }}>
-        Connectors
+        {t(lang, "connectors")}
       </h1>
-      <p className="muted">
-        Google Drive, Microsoft 365, and local DB sync here use <strong>sandbox sample files</strong> for demos (not live OAuth).
-        Ollama below is real when <span className="mono">ollama serve</span> is running. Sandbox + Ollama feed the form chatbot and flows.
-      </p>
+      <p className="muted">{t(lang, "connectorsBlurb")}</p>
       {msg && <p className="pill ok">{msg}</p>}
       <div className="grid cards-3" style={{ marginTop: 16 }}>
         {SOURCES.map((src) => {
@@ -71,7 +70,7 @@ export default function Connectors() {
                 <div className={`sigil src-${src.kind}`}>{src.mark}</div>
                 <div>
                   <div className="mark">{src.title}</div>
-                  <div className="eyebrow">{row?.status || "not connected"}</div>
+                  <div className="eyebrow">{row?.status || t(lang, "notConnected")}</div>
                 </div>
               </div>
               <p className="muted" style={{ minHeight: 48 }}>
@@ -87,12 +86,12 @@ export default function Connectors() {
               <div className="row-actions">
                 {!row && (
                   <button className="btn primary" data-demo={`connect-${src.kind}`} onClick={() => connect(src.kind, src.title)}>
-                    Connect
+                    {t(lang, "connect")}
                   </button>
                 )}
                 {row && (
                   <button className="btn primary" data-demo={`sync-${src.kind}`} onClick={() => sync(row.id)}>
-                    Sync into RAG
+                    {t(lang, "syncIntoRag")}
                   </button>
                 )}
               </div>
@@ -104,7 +103,7 @@ export default function Connectors() {
             <div className="sigil src-ollama">Ol</div>
             <div>
               <div className="mark">Ollama (local models)</div>
-              <div className="eyebrow">{ollama?.up ? "connected" : "offline"}</div>
+              <div className="eyebrow">{ollama?.up ? t(lang, "connected") : t(lang, "offline")}</div>
             </div>
           </div>
           <p className="muted" style={{ minHeight: 48 }}>

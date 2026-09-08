@@ -37,10 +37,11 @@ Claude’s pitch-prep HTML listed four landmines. Re-checked here:
 
 | | |
 |---|---|
-| **Keys** | **30** string keys per locale in `apps/web/src/i18n.ts` (nav + form chrome). Most page body copy is still English. |
-| **RTL** | **Not** public-form-only (Claude HTML was slightly stale). `AppShell` sets `document.documentElement.dir` for `he`/`ar` on the **whole desk**. Public `FillForm` also sets dir from `form.language`. |
-| **Say** | “Hebrew chrome + RTL shell are on; full Hebrew product copy is still thin — 30 keys.” |
-| **Don’t** | Switch the main desk to HE and claim a fully localized product. |
+| **Keys** | Expanded beyond nav chrome in `apps/web/src/i18n.ts` (~130 HE keys): Forms list, FormBuilder inspector (Save / Delete / Label / Mandatory / Choices / …), FillForm, Answered, Connectors labels. |
+| **RTL** | `AppShell` sets `document.documentElement.dir` for `he`/`ar` on the **whole desk**. Public `FillForm` also sets dir from `form.language`. |
+| **Engine** | `classify.py` recognizes ₪/ILS, חשבונית, ח.פ., מספר הקצאה (field extraction only — **not** a live allocation API). Form compose with `language=he` yields Hebrew field labels. |
+| **Say** | “Hebrew desk chrome + Forms/Builder/Fill + RTL; invoice heuristics know Israeli terms.” |
+| **Don’t** | Claim full product localization or live מספר הקצאה validation / BKMVDATA. |
 
 ## Quick do / don’t
 
