@@ -369,9 +369,42 @@ pre.ocr {
 .src-ollama { background: conic-gradient(from 40deg, #8fbfa0, #d4b06a, #2a4a38, #8fbfa0); }
 .builder-grid {
   display: grid;
-  grid-template-columns: 140px 1fr 260px;
+  grid-template-columns: 140px minmax(0, 1fr) minmax(260px, 320px);
   gap: 14px;
   align-items: start;
+}
+.builder-grid .field-inspector {
+  position: sticky;
+  top: 12px;
+  border-color: rgba(212, 176, 106, 0.28);
+  background:
+    linear-gradient(180deg, rgba(212, 176, 106, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+}
+.builder-grid .field-inspector.has-selection {
+  border-color: rgba(212, 176, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(212, 176, 106, 0.2), var(--shadow);
+}
+.inspector-title {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  margin: 6px 0 0;
+  color: var(--brass-2);
+  letter-spacing: -0.02em;
+}
+.inspector-hint {
+  margin: 6px 0 14px;
+  font-size: 13px;
+}
+.inspector-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  cursor: pointer;
+}
+.field-inspector .field {
+  margin-top: 10px;
 }
 .form-options {
   margin-bottom: 14px;
@@ -419,6 +452,56 @@ pre.ocr {
   cursor: grab;
 }
 .paper-row.on { background: rgba(212,176,106,0.28); }
+.paper-row-main {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+.paper-row-type {
+  width: 100%;
+  color: #8a7a5a;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.paper-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.paper-icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border-color: rgba(26, 20, 8, 0.16);
+  color: #5c4a28;
+  background: rgba(255, 255, 255, 0.35);
+  font-size: 16px;
+  line-height: 1;
+}
+.paper-icon-btn:hover:not(:disabled) {
+  border-color: #c9a45a;
+  color: #6b5220;
+  background: rgba(212, 176, 106, 0.28);
+}
+.paper-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.paper-icon-btn.danger {
+  border-color: rgba(224, 122, 95, 0.45);
+  color: #b54a34;
+}
+.paper-icon-btn.danger:hover:not(:disabled) {
+  border-color: #e07a5f;
+  color: #8f2f1c;
+  background: rgba(224, 122, 95, 0.16);
+}
 .line-no {
   font-family: var(--mono);
   font-size: 12px;
@@ -583,6 +666,7 @@ html[dir=rtl] .form-exit-arrow {
 
 @media (max-width: 1100px) {
   .builder-grid { grid-template-columns: 1fr; }
+  .builder-grid .field-inspector { position: static; }
   .cards-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

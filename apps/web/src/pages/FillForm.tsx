@@ -133,11 +133,17 @@ export default function FillForm() {
                 <label>
                   {i + 1}. {f.label} {f.required ? "*" : ""}
                 </label>
+                {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
                 {f.type === "textarea" ? (
-                  <textarea value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required} />
+                  <textarea
+                    value={answers[f.id] || ""}
+                    placeholder={f.placeholder || undefined}
+                    onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
+                    required={f.required}
+                  />
                 ) : f.type === "dropdown" || f.type === "radio" ? (
                   <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
-                    <option value="">—</option>
+                    <option value="">{f.placeholder || "—"}</option>
                     {(f.options || []).map((o: string) => (
                       <option key={o}>{o}</option>
                     ))}
@@ -154,6 +160,7 @@ export default function FillForm() {
                   <input
                     type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
                     required={f.required}
+                    placeholder={f.placeholder || undefined}
                     value={answers[f.id] || ""}
                     onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
                   />

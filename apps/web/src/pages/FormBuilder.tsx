@@ -99,9 +99,45 @@ export default function FormBuilder() {
     setSel(to);
   };
 
+  const remove = (index: number) => {
+    if (frozen) return;
+    const label = fields[index]?.label || `Line ${index + 1}`;
+    if (!window.confirm(`Delete field “${label}”?`)) return;
+    const next = fields.slice();
+    next.splice(index, 1);
+    setFields(next);
+    setSel((prev) => {
+      if (!next.length) return 0;
+      if (prev > index) return prev - 1;
+      if (prev === index) return Math.min(index, next.length - 1);
+      return prev;
+    });
+  };
+
+  const patchSelected = (patch: Record<string, unknown>) => {
+    if (frozen) return;
+    const current = fields[sel];
+    if (!current) return;
+    const next = fields.slice();
+    next[sel] = { ...current, ...patch };
+    setFields(next);
+  };
+
   const add = (type: string) => {
     if (frozen) return;
-    setFields([...fields, { id: nid(), type, label: type === "heading" ? "Section" : "New field", required: type === "signature", options: type === "dropdown" ? ["A", "B"] : [] }]);
+    setFields([
+      ...fields,
+      {
+        id: nid(),
+        type,
+        label: type === "heading" ? "Section" : "New field",
+        required: type === "signature",
+        options: type === "dropdown" || type === "radio" ? ["A", "B"] : [],
+        help: "",
+        placeholder: "",
+        auto: "",
+      },
+    ]);
     setSel(fields.length);
   };
 
@@ -443,50 +479,93 @@ export default function FormBuilder() {
               onClick={() => setSel(i)}
             >
               <span className="line-no">{i + 1}</span>
-              <div>
-                <div className="mono dim">{f.type}</div>
+              <div className="paper-row-main">
+                <div className="mono paper-row-type">{f.type}</div>
                 <strong>{f.label}</strong>
                 {f.required && <span className="pill bad">required</span>}
               </div>
-              <div>
-                <button className="btn" onClick={() => move(i, i - 1)} disabled={frozen}>
+              <div className="paper-row-actions" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="btn paper-icon-btn"
+                  aria-label="Move up"
+                  title="Move up"
+                  onClick={() => move(i, i - 1)}
+                  disabled={frozen || i === 0}
+                >
                   ↑
                 </button>
-                <button className="btn" onClick={() => move(i, i + 1)} disabled={frozen}>
+                <button
+                  type="button"
+                  className="btn paper-icon-btn"
+                  aria-label="Move down"
+                  title="Move down"
+                  onClick={() => move(i, i + 1)}
+                  disabled={frozen || i === fields.length - 1}
+                >
                   ↓
+                </button>
+                <button
+                  type="button"
+                  className="btn paper-icon-btn danger"
+                  data-demo="delete-field"
+                  aria-label="Delete field"
+                  title={frozen ? "Form is locked" : "Delete field"}
+                  onClick={() => remove(i)}
+                  disabled={frozen}
+                >
+                  ×
                 </button>
               </div>
             </div>
           ))}
           {!fields.length && <p className="muted">Ask the chat, or tap a field type.</p>}
         </div>
-        <div className="card">
-          <div className="eyebrow">Line {sel + 1}</div>
-          {selected && (
+        <aside className={`card field-inspector ${selected ? "has-selection" : ""}`} data-demo="field-inspector">
+          <div className="eyebrow">Line {selected ? sel + 1 : "—"}</div>
+          <h3 className="inspector-title">{selected ? "Field configuration" : "Select a field"}</h3>
+          {selected ? (
             <>
+              <p className="muted inspector-hint">Editing “{selected.label || "Untitled"}”</p>
+              <div className="field">
+                <label>Type</label>
+                <select
+                  value={selected.type}
+                  disabled={frozen}
+                  aria-label="Field type"
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    const options =
+                      type === "dropdown" || type === "radio"
+                        ? selected.options?.length
+                          ? selected.options
+                          : ["A", "B"]
+                        : [];
+                    patchSelected({ type, options });
+                  }}
+                >
+                  {TYPES.map((ty) => (
+                    <option key={ty} value={ty}>
+                      {ty}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="field">
                 <label>Label</label>
                 <input
                   value={selected.label}
                   disabled={frozen}
                   readOnly={frozen}
-                  onChange={(e) => {
-                    const next = fields.slice();
-                    next[sel] = { ...selected, label: e.target.value };
-                    setFields(next);
-                  }}
+                  onChange={(e) => patchSelected({ label: e.target.value })}
                 />
               </div>
-              <label className="muted">
+              <label className="inspector-check muted">
                 <input
                   type="checkbox"
                   checked={!!selected.required}
                   disabled={frozen}
-                  onChange={(e) => {
-                    const next = fields.slice();
-                    next[sel] = { ...selected, required: e.target.checked };
-                    setFields(next);
-                  }}
+                  onChange={(e) => patchSelected({ required: e.target.checked })}
                 />{" "}
                 Mandatory
               </label>
@@ -494,20 +573,52 @@ export default function FormBuilder() {
                 <div className="field">
                   <label>Choices (comma)</label>
                   <input
-                    value={(selected.options || []).join(",")}
+                    value={(selected.options || []).join(", ")}
                     disabled={frozen}
                     readOnly={frozen}
-                    onChange={(e) => {
-                      const next = fields.slice();
-                      next[sel] = { ...selected, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) };
-                      setFields(next);
-                    }}
+                    onChange={(e) =>
+                      patchSelected({
+                        options: e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      })
+                    }
                   />
                 </div>
               )}
+              <div className="field">
+                <label>Help text</label>
+                <input
+                  value={selected.help || ""}
+                  disabled={frozen}
+                  readOnly={frozen}
+                  placeholder="Shown under the label"
+                  onChange={(e) => patchSelected({ help: e.target.value })}
+                />
+              </div>
+              {selected.type !== "heading" && selected.type !== "signature" && selected.type !== "yesno" && (
+                <div className="field">
+                  <label>Placeholder</label>
+                  <input
+                    value={selected.placeholder || ""}
+                    disabled={frozen}
+                    readOnly={frozen}
+                    placeholder="Hint inside the input"
+                    onChange={(e) => patchSelected({ placeholder: e.target.value })}
+                  />
+                </div>
+              )}
+              {selected.auto ? (
+                <p className="pill ok" style={{ marginTop: 8 }}>
+                  Auto: {selected.auto}
+                </p>
+              ) : null}
             </>
+          ) : (
+            <p className="muted">Tap a row on the paper to configure label, type, and options.</p>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   );
