@@ -1,10 +1,12 @@
 # DocFlow
 
-Production document intelligence platform — the completed successor to **Doc-Power**, with **document flow** as an executable engine rather than a message nobody consumes.
+**Production** document intelligence platform — the completed successor to **Doc-Power**, with **document flow** as an executable engine rather than a message nobody consumes.
+
+Production posture and remaining hardening: [`docs/PRODUCTION.md`](docs/PRODUCTION.md).
 
 **Desk:** http://localhost:5173  
 **API:** http://localhost:8000/docs  
-**Demo:** `oren@gcs-tech.org` / `DocFlow!2026`
+**Seed login (change in real deploys):** `oren@gcs-tech.org` / `DocFlow!2026`
 
 ## Why this exists
 
