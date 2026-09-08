@@ -5,12 +5,18 @@ Substance from the GTM session — **targets and sequencing**, not shipped featu
 ## חשבוניות ישראל / מספר הקצאה
 
 - Israel’s e-invoicing regime (allocation number / מספר הקצאה) is a **compliance pressure** buyers already feel.
-- Session note: **June 2026** threshold at **₪5,000** — use as timing context when speaking to CFOs / CPAs, not as a DocFlow feature claim.
+- Session note: from **1 Jun 2026** the threshold is **₪5,000** — without an allocation number the recipient cannot deduct **18% VAT**. Treat as timing/context for CFOs / CPAs, **not** a DocFlow feature claim tonight.
+- Napkin math from the session (illustrative): ~300 invoices/month at average ₪8,000 with **2%** problematic → **~₪103,680/year** exposure. Useful in the room; not a product metric in the app.
 - DocFlow’s near-term commercial use of this pressure is the **invoice health check** wedge (see [COMMERCIAL_WEDGE.md](./COMMERCIAL_WEDGE.md)), not “we issue allocation numbers tonight.”
+
+### Code gap (this repo)
+
+`apps/api/app/classify.py` money regex is `USD|EUR|GBP|$|€` only — **no ₪**, no ח.פ., no `"חשבונית מס"`, no מספר הקצאה. The ingest pipeline exists; the Israel-specific step does not.
 
 ## BKMVDATA — read lever
 
-- **BKMVDATA** (accounting export / open-book style dump) is the **read** path into client books.
+- **BKMVDATA** (קובץ אחיד / open-book style dump) is the **read** path into client books.
+- Session: every Israeli bookkeeping package has been required to export it since **2006** (חשבשבת, Priority, רווחית, SAP B1, iCount, …). One parser ≈ read from most systems without per-vendor APIs — including disconnected on-prem.
 - Positioning: ingest / normalize / flag — **not** replace the ERP of record on day one.
 - Parser / Hebrew OCR / allocation-number validation are **not** trivial stubs to ship for tomorrow’s pitch; treat as roadmap.
 

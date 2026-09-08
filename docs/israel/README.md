@@ -1,6 +1,8 @@
 # DocFlow — Israeli GTM (session distill)
 
-Distilled from Oren’s Claude strategy session for the **first business-feasibility presentation**. Prefer this folder over inventing product claims in the live room.
+Distilled from Oren’s Claude strategy session for the **first business-feasibility presentation** (investor/partner, live demo + slides). Prefer this folder over inventing product claims in the live room.
+
+**Source note:** Oren also pointed at local HTML artifacts (`file:///F:/docflow-*.html`). Those F: paths are **not reachable** from this cloud workspace. If a sibling agent later drops the HTML here, treat them as source of truth and re-sync this folder.
 
 | Doc | Purpose |
 |---|---|
@@ -11,7 +13,9 @@ Distilled from Oren’s Claude strategy session for the **first business-feasibi
 | [RAM_CONTROL.md](./RAM_CONTROL.md) | Read-only SQL views; don’t compete with Top Ramdor |
 | [DEMO_LANDMINES.md](./DEMO_LANDMINES.md) | Four pitch landmines verified against **this** `powerdoc` codebase |
 | [TOMORROW_DEMO.md](./TOMORROW_DEMO.md) | Stopwatch runbook (HE + EN) |
-| [CODE_DEBT_MECHIR.md](./CODE_DEBT_MECHIR.md) | What’s still missing before “מכיר” |
+| [CODE_DEBT_MECHIR.md](./CODE_DEBT_MECHIR.md) | What’s still missing before “מכיר” (~10–12 weeks per session) |
+| [DISCOVERY_QUESTIONS.md](./DISCOVERY_QUESTIONS.md) | Discovery framing (session highlight) |
+| [SOURCES.md](./SOURCES.md) | Session sources + unreachable F: HTML inventory |
 
 **Not this PR:** work on `doc-power-local-k8s` / `F:\DevSecOps\…` / `feature/gateway-missing-routes` is a **separate repo** from powerdoc PR #1. Footnote only — do not demo or claim it here.
 

@@ -1,15 +1,17 @@
 # Tomorrow’s demo runbook / ראנבוק לדמו מחר
 
-Stopwatch. Business-feasibility room — not a feature dump.  
+Stopwatch. Business-feasibility room (investor/partner) — not a feature dump.  
 Login: `oren@gcs-tech.org` / `DocFlow!2026`
 
 ---
 
-## Opening sentence (0:00–0:45)
+## Opening sentence (0:00–0:45) — memorize
 
-**EN:** *Documents should move — from the field to the office — without dying in WhatsApp and Excel. Invoices are one example; routing is the product.*
+**EN:** *In every organization, information is born in the field and arrives at the office shredded across WhatsApp, phone, and email. We turn it into a form that already knows the context, and route it to the right person and folder. Invoices are one example.*
 
-**HE:** *מסמכים צריכים לזוז — מהשטח למשרד — בלי למות בוואטסאפ ובאקסל. חשבוניות הן דוגמה אחת; הניתוב הוא המוצר.*
+**HE:** *בכל ארגון יש מידע שנוצר בשטח ומגיע למשרד מרוסק בין ווטסאפ, טלפון ומייל. אנחנו הופכים אותו לטופס שכבר יודע את ההקשר, ומנתבים אותו לאדם ולתיקייה הנכונים. חשבוניות הן דוגמה אחת.*
+
+Shorter fallback: *Documents should move — from the field to the office — without dying in WhatsApp and Excel. Routing is the product.*
 
 ---
 
@@ -27,7 +29,13 @@ Login: `oren@gcs-tech.org` / `DocFlow!2026`
 
 ---
 
-## Safe form prompt (copy-paste)
+## Safe form prompt (copy-paste) — session exact
+
+```
+invoice approval form with vendor, invoice number, amount, date, email, signature
+```
+
+Alternate (e2e-tested student day-summary):
 
 ```
 day summary for students with automatic today date, email, was the student in class, which topic was best explained, rate today's class, and mandatory signature
@@ -49,6 +57,8 @@ day summary for students with automatic today date, email, was the student in cl
 
 **HE:** *לא מבקשים כסף היום. צריכים **שתי היכרות** לרואי חשבון / משרדי הנהלת חשבונות שיקנו בדיקת בריאות חשבוניות בתשלום (₪8–15 אלף).*
 
+If they raise investment first — let them.
+
 ---
 
 ## Pre-flight checklist (30 min before)
@@ -59,6 +69,7 @@ day summary for students with automatic today date, email, was the student in cl
 - [ ] Language switcher: know that HE = 30 keys + RTL shell, not full UI
 - [ ] If you must show Connectors: say **demo sandbox** out loud
 - [ ] Do **not** demo `doc-power-local-k8s` gateway work — different repo
+- [ ] Run this script **once** with a stopwatch the night before — then stop coding
 
 ---
 
@@ -66,7 +77,7 @@ day summary for students with automatic today date, email, was the student in cl
 
 | Break | Recovery |
 |---|---|
-| Overview slow / empty | Refresh once; numbers come from DB. Digest is heuristic. |
+| Overview slow / empty | Refresh once; numbers come from DB. Digest is heuristic (no Ollama wait). |
 | Compose empty fields | Re-paste the **exact** safe prompt above. |
 | Connectors looks “fake” | Admit sandbox; pivot to Documents + Forms. |
 | Someone asks allocation / BKMVDATA | “That’s the integration roadmap after the health-check wedge.” |
