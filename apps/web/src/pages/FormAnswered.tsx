@@ -260,7 +260,23 @@ export default function FormAnswered() {
                   </div>
                   {open === s.id && (
                     <div className="answered-log" data-demo="action-log">
-                      {(s.actions || []).length === 0 && <p className="muted">{t(lang, "noDigestYet")}</p>}
+                      {(s.upload_scans || []).length > 0 && (
+                        <div className="answered-log-row" data-demo="upload-scans">
+                          <span className="pill">{t(lang, "uploadScans")}</span>
+                          <ul className="muted" style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
+                            {(s.upload_scans || []).map((scan: any, i: number) => (
+                              <li key={i} className="mono">
+                                {scan.filename || "—"} · {scan.status || (scan.ok ? "clean" : "rejected")}
+                                {scan.reason ? ` · ${scan.reason}` : ""}
+                                {scan.sniffed_mime ? ` · ${scan.sniffed_mime}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {(s.actions || []).length === 0 && !(s.upload_scans || []).length && (
+                        <p className="muted">{t(lang, "noDigestYet")}</p>
+                      )}
                       {(s.actions || [])
                         .slice()
                         .reverse()

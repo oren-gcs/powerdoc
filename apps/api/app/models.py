@@ -344,6 +344,8 @@ class FormSubmission(Base):
     document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="received")
     actions: Mapped[list] = mapped_column(JSON, default=list)
+    # Per-file scan outcomes for file/images fields: [{field_id, filename, status, reason, ...}]
+    upload_scans: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

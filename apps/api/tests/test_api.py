@@ -606,3 +606,129 @@ def test_hebrew_invoice_form_compose(client):
     body = drafted.json()
     assert body["language"] == "he"
     assert any(f["label"] == "ספק" for f in body["fields"])
+
+
+def _mini_png() -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), color=(10, 20, 30)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_form_upload_scan_accept_and_reject(client):
+    """Clean PNG/PDF accepted; exe / MIME mismatch / oversize rejected with 400."""
+    headers = auth_headers(client)
+    fields = [
+        {
+            "id": "doc1",
+            "type": "file",
+            "label": "Attach PDF",
+            "required": True,
+            "accept": ["pdf", "png"],
+            "max_count": 1,
+        },
+        {
+            "id": "pics",
+            "type": "images",
+            "label": "Photos",
+            "required": False,
+            "accept": ["png", "jpg", "jpeg"],
+            "max_count": 3,
+        },
+    ]
+    created = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={"name": "Upload scan form", "language": "en", "fields": fields, "recipients": []},
+    )
+    assert created.status_code == 200, created.text
+    fid = created.json()["id"]
+    live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
+    assert live.status_code == 200, live.text
+    token = live.json()["share_token"]
+    assert token
+
+    png = _mini_png()
+    pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+
+    # Reject .exe
+    bad_exe = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        data={"name": "A", "email": "a@example.com", "answers": "{}", "locale": "en"},
+        files=[("file__doc1", ("malware.exe", b"MZ" + b"\x00" * 64, "application/octet-stream"))],
+    )
+    assert bad_exe.status_code == 400, bad_exe.text
+    assert "reject" in bad_exe.text.lower() or "disallowed" in bad_exe.text.lower() or "executable" in bad_exe.text.lower()
+
+    # Reject content-type mismatch (PNG bytes declared as PDF)
+    bad_mismatch = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        data={"name": "A", "email": "a@example.com", "answers": "{}", "locale": "en"},
+        files=[("file__doc1", ("photo.png", png, "application/pdf"))],
+    )
+    assert bad_mismatch.status_code == 400, bad_mismatch.text
+    assert "mismatch" in bad_mismatch.text.lower()
+
+    # Reject oversize via field max_bytes
+    tiny = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={
+            "name": "Tiny upload",
+            "language": "en",
+            "fields": [
+                {
+                    "id": "doc1",
+                    "type": "file",
+                    "label": "Tiny",
+                    "required": True,
+                    "accept": ["png"],
+                    "max_count": 1,
+                    "max_bytes": 10,
+                }
+            ],
+            "recipients": [],
+        },
+    )
+    assert tiny.status_code == 200, tiny.text
+    tiny_live = client.post(f"/api/v1/forms/{tiny.json()['id']}/publish", headers=headers)
+    tiny_token = tiny_live.json()["share_token"]
+    bad_size = client.post(
+        f"/api/v1/public/forms/{tiny_token}/submit",
+        data={"name": "A", "email": "a@example.com", "answers": "{}", "locale": "en"},
+        files=[("file__doc1", ("photo.png", png, "image/png"))],
+    )
+    assert bad_size.status_code == 400, bad_size.text
+    assert "large" in bad_size.text.lower()
+
+    # Accept clean PDF (+ optional PNG images)
+    ok = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        data={"name": "Vendor", "email": "vendor@example.com", "answers": "{}", "locale": "en"},
+        files=[
+            ("file__doc1", ("invoice.pdf", pdf, "application/pdf")),
+            ("file__pics", ("a.png", png, "image/png")),
+        ],
+    )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["status"] == "implemented"
+    assert body["upload_scans"]
+    assert all(s.get("status") == "clean" for s in body["upload_scans"])
+
+    rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
+    assert rows.status_code == 200
+    sub = rows.json()[0]
+    assert sub["upload_scans"]
+    assert isinstance(sub["answers"]["doc1"], dict)
+    assert sub["answers"]["doc1"]["scan"] == "clean"
+    assert sub["answers"]["doc1"]["filename"] == "invoice.pdf"
+    assert isinstance(sub["answers"]["pics"], list)
+    assert sub["answers"]["pics"][0]["scan"] == "clean"
+    key = sub["answers"]["doc1"].get("storage_key") or ""
+    assert key.startswith("t")
+    assert "form" in key and "upload" in key.replace("-", "_")
+    assert sub["answers"]["doc1"].get("document_id")

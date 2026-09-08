@@ -1,7 +1,9 @@
+import hashlib
+import json
 from datetime import datetime
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,7 @@ from app.engine.form_digest import (
 from app.engine.formgen import compose_from_prompt, fields_from_chunks, relevant_chunks
 from app.engine.orchestrator import match_automation, process_document
 from app.engine.rag import retrieve, upsert_chunk
+from app.engine.upload_scan import DEFAULT_MAX_IMAGES, scan_upload
 from app.llm import ollama_status
 from app.models import (
     Activity,
@@ -341,8 +344,141 @@ def _submission_out(db: Session, s: FormSubmission) -> dict:
         "document_url": f"/app/documents/{doc.id}" if doc else None,
         "locale": s.locale,
         "actions": s.actions or [],
+        "upload_scans": getattr(s, "upload_scans", None) or [],
         "created_at": s.created_at.isoformat() if s.created_at else None,
     }
+
+
+def _upload_field_kinds(fields: list) -> dict[str, dict]:
+    """Map field id → field def for file/images types."""
+    out: dict[str, dict] = {}
+    for field in fields or []:
+        if not isinstance(field, dict):
+            continue
+        ty = field.get("type")
+        if ty in ("file", "images") and field.get("id"):
+            out[str(field["id"])] = field
+    return out
+
+
+def _store_scanned_upload(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_id: int,
+    form_id: int,
+    field_id: str,
+    filename: str,
+    data: bytes,
+    sniffed_mime: str,
+) -> dict:
+    """Persist a clean upload outside the web root under a random storage key."""
+    safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in (filename or "upload"))[:120]
+    random_key = token_urlsafe(18)
+    # Path is under storage root (not served statically); random key prevents guessing.
+    key = storage.put(tenant_id, f"form-uploads/{form_id}/{random_key}_{safe_name}", data)
+    checksum = hashlib.sha256(data).hexdigest()
+    doc = Document(
+        tenant_id=tenant_id,
+        user_id=owner_id,
+        filename=safe_name,
+        content_type=sniffed_mime,
+        size_bytes=len(data),
+        storage_key=key,
+        checksum=checksum,
+        status="uploaded",
+        tags=["form-upload", f"form-{form_id}", f"field-{field_id}"],
+    )
+    db.add(doc)
+    db.flush()
+    return {
+        "document_id": doc.id,
+        "storage_key": key,
+        "filename": safe_name,
+        "content_type": sniffed_mime,
+        "size": len(data),
+        "checksum": checksum,
+        "scan": "clean",
+    }
+
+
+def _process_upload_fields(
+    db: Session,
+    f: Form,
+    answers: dict,
+    uploads: dict[str, list[tuple[str, str | None, bytes]]],
+    owner_id: int,
+) -> tuple[dict, list[dict]]:
+    """Scan + store file/images answers. Raises HTTPException(400) on any rejection."""
+    fields = (f.definition or {}).get("fields") or []
+    upload_defs = _upload_field_kinds(fields)
+    scans: list[dict] = []
+    merged = dict(answers or {})
+
+    for field_id, field in upload_defs.items():
+        kind = "images" if field.get("type") == "images" else "file"
+        accept = field.get("accept") if isinstance(field.get("accept"), list) else None
+        max_count = int(field.get("max_count") or (DEFAULT_MAX_IMAGES if kind == "images" else 1))
+        max_count = max(1, min(max_count, DEFAULT_MAX_IMAGES if kind == "images" else 1))
+        max_bytes = field.get("max_bytes")
+        try:
+            max_bytes_i = int(max_bytes) if max_bytes is not None else None
+        except (TypeError, ValueError):
+            max_bytes_i = None
+
+        items = uploads.get(field_id) or []
+        if field.get("required") and not items:
+            raise HTTPException(400, f"Missing required upload: {field.get('label') or field_id}")
+        if len(items) > max_count:
+            raise HTTPException(400, f"Too many files for {field.get('label') or field_id} (max {max_count})")
+
+        stored_meta: list[dict] = []
+        for filename, content_type, data in items:
+            result = scan_upload(
+                data,
+                filename or "upload",
+                content_type,
+                kind=kind,
+                accept=accept,
+                max_bytes=max_bytes_i,
+            )
+            entry = {
+                "field_id": field_id,
+                "filename": filename,
+                "declared_type": content_type,
+                **result,
+            }
+            scans.append(entry)
+            if not result.get("ok"):
+                raise HTTPException(400, f"Upload rejected ({field.get('label') or field_id}): {result.get('reason')}")
+            meta = _store_scanned_upload(
+                db,
+                tenant_id=f.tenant_id,
+                owner_id=owner_id,
+                form_id=f.id,
+                field_id=field_id,
+                filename=filename or "upload",
+                data=data,
+                sniffed_mime=result.get("sniffed_mime") or "application/octet-stream",
+            )
+            stored_meta.append(meta)
+
+        if kind == "file":
+            merged[field_id] = stored_meta[0] if stored_meta else None
+        else:
+            merged[field_id] = stored_meta
+
+    # Strip any client-supplied fake upload metadata for upload fields without files
+    for field_id in upload_defs:
+        if field_id not in uploads and field_id in merged and not isinstance(merged.get(field_id), (dict, list)):
+            # leave text alone only if somehow present; clear non-upload junk
+            pass
+        if field_id not in uploads and upload_defs[field_id].get("required"):
+            raise HTTPException(400, f"Missing required upload: {upload_defs[field_id].get('label') or field_id}")
+        if field_id not in uploads:
+            merged[field_id] = None if upload_defs[field_id].get("type") == "file" else []
+
+    return merged, scans
 
 
 def _notify_recipients(
@@ -789,7 +925,13 @@ def ingest_submission(
         raise HTTPException(400, str(exc)) from exc
 
 
-def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | None = None) -> dict:
+def _apply_submission(
+    db: Session,
+    f: Form,
+    body: SubmitIn,
+    share: FormShare | None = None,
+    uploads: dict[str, list[tuple[str, str | None, bytes]]] | None = None,
+) -> dict:
     if share is not None:
         status = (share.status or "pending").lower()
         if status == "submitted":
@@ -802,28 +944,49 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | N
         if not (body.email or "").strip():
             body.email = share.recipient
     fields = (f.definition or {}).get("fields") or []
+    upload_defs = _upload_field_kinds(fields)
     missing = [
         x["label"]
         for x in fields
-        if x.get("required") and x.get("type") not in ("heading", "signature") and not body.answers.get(x["id"])
+        if x.get("required")
+        and x.get("type") not in ("heading", "signature", "file", "images")
+        and not body.answers.get(x["id"])
     ]
     if missing:
         raise HTTPException(400, f"Missing required: {', '.join(missing)}")
     if any(x.get("type") == "signature" and x.get("required") for x in fields) and not body.signature:
         raise HTTPException(400, "Signature required")
+
+    owner = db.get(User, f.created_by) or db.query(User).filter(User.tenant_id == f.tenant_id).first()
+    owner_id = owner.id if owner else 1
+
+    # JSON-only submits cannot satisfy required uploads.
+    if upload_defs and not uploads:
+        required_uploads = [x.get("label") or fid for fid, x in upload_defs.items() if x.get("required")]
+        if required_uploads:
+            raise HTTPException(400, f"Missing required upload: {', '.join(required_uploads)}")
+
+    answers, upload_scans = _process_upload_fields(
+        db, f, dict(body.answers or {}), uploads or {}, owner_id
+    )
+
     lines = [f"{f.name}", f"From: {body.name} <{body.email}>", ""]
     for field in fields:
         if field.get("type") == "heading":
             continue
-        lines.append(f"{field.get('label')}: {body.answers.get(field['id'], '')}")
+        val = answers.get(field["id"], "")
+        if field.get("type") in ("file", "images"):
+            if isinstance(val, list):
+                val = ", ".join(x.get("filename", "") for x in val if isinstance(x, dict))
+            elif isinstance(val, dict):
+                val = val.get("filename", "")
+        lines.append(f"{field.get('label')}: {val}")
     rendered = "\n".join(lines).encode()
     key = storage.put(f.tenant_id, f"form-{f.id}-{token_urlsafe(4)}.txt", rendered)
-    import hashlib
 
-    owner = db.get(User, f.created_by) or db.query(User).filter(User.tenant_id == f.tenant_id).first()
     doc = Document(
         tenant_id=f.tenant_id,
-        user_id=owner.id if owner else 1,
+        user_id=owner_id,
         filename=f"{f.name} — {body.name or 'submission'}.txt",
         content_type="text/plain",
         size_bytes=len(rendered),
@@ -839,12 +1002,13 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | N
         tenant_id=f.tenant_id,
         submitter_name=body.name,
         submitter_email=body.email,
-        answers=body.answers,
+        answers=answers,
         signature=body.signature,
         locale=body.locale or f.language,
         document_id=doc.id,
         status="received",
         actions=[],
+        upload_scans=upload_scans,
     )
     db.add(sub)
     db.flush()
@@ -852,7 +1016,7 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | N
         share.status = "submitted"
         share.submission_id = sub.id
     link_submission_document(db, f, sub)
-    db.add(RecordRow(tenant_id=f.tenant_id, form_id=f.id, submission_id=sub.id, payload=body.answers))
+    db.add(RecordRow(tenant_id=f.tenant_id, form_id=f.id, submission_id=sub.id, payload=answers))
     upsert_chunk(db, f.tenant_id, "form_submission", str(sub.id), f.name, rendered.decode(), f.language)
     db.add(Activity(tenant_id=f.tenant_id, user_id=owner.id if owner else None, activity_type="form_submitted", details={"form_id": f.id, "submission_id": sub.id}))
     db.commit()
@@ -872,6 +1036,7 @@ def _apply_submission(db: Session, f: Form, body: SubmitIn, share: FormShare | N
         "locked": True,
         "share_status": share.status if share is not None else None,
         "recipient_email": share.recipient if share is not None else None,
+        "upload_scans": upload_scans,
     }
 
 
@@ -933,7 +1098,48 @@ def public_get(
     return out
 
 
+async def _parse_submit_request(request: Request) -> tuple[SubmitIn, dict[str, list[tuple[str, str | None, bytes]]]]:
+    """Accept JSON or multipart. Uploads use keys file__{fieldId} (repeatable for images)."""
+    ct = (request.headers.get("content-type") or "").lower()
+    uploads: dict[str, list[tuple[str, str | None, bytes]]] = {}
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        raw_answers = form.get("answers") or "{}"
+        try:
+            answers = json.loads(str(raw_answers))
+            if not isinstance(answers, dict):
+                raise ValueError("answers must be an object")
+        except Exception as exc:
+            raise HTTPException(400, "Invalid answers JSON") from exc
+        body = SubmitIn(
+            name=str(form.get("name") or ""),
+            email=str(form.get("email") or ""),
+            answers=answers,
+            signature=(str(form.get("signature")) if form.get("signature") not in (None, "") else None),
+            locale=str(form.get("locale") or "en"),
+        )
+        for key, value in form.multi_items():
+            if not isinstance(key, str) or not key.startswith("file__"):
+                continue
+            field_id = key[6:]
+            if not field_id:
+                continue
+            if isinstance(value, UploadFile) or hasattr(value, "read"):
+                data = await value.read()  # type: ignore[union-attr]
+                filename = getattr(value, "filename", None) or "upload"
+                content_type = getattr(value, "content_type", None)
+                uploads.setdefault(field_id, []).append((str(filename), content_type, data or b""))
+        return body, uploads
+
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "Expected JSON or multipart form body") from exc
+    return SubmitIn.model_validate(payload), uploads
+
+
 @public.post("/{token}/submit")
-def public_submit(token: str, body: SubmitIn, db: Session = Depends(get_db)):
+async def public_submit(token: str, request: Request, db: Session = Depends(get_db)):
     f, share = _resolve_public_token(db, token)
-    return _apply_submission(db, f, body, share=share)
+    body, uploads = await _parse_submit_request(request)
+    return _apply_submission(db, f, body, share=share, uploads=uploads or None)

@@ -22,6 +22,8 @@ def ensure_sqlite_columns(engine) -> None:
         sub_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(form_submissions)"))]
         if sub_cols and "actions" not in sub_cols:
             conn.execute(text("ALTER TABLE form_submissions ADD COLUMN actions JSON DEFAULT '[]'"))
+        if sub_cols and "upload_scans" not in sub_cols:
+            conn.execute(text("ALTER TABLE form_submissions ADD COLUMN upload_scans JSON DEFAULT '[]'"))
 
         share_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(form_shares)"))]
         if share_cols:

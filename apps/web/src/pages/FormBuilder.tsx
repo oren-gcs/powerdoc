@@ -15,6 +15,8 @@ const TYPES = [
   "radio",
   "yesno",
   "signature",
+  "file",
+  "images",
   "heading",
 ] as const;
 
@@ -23,6 +25,9 @@ type FieldType = (typeof TYPES)[number];
 const CHOICE_TYPES = new Set<FieldType>(["dropdown", "radio"]);
 const PLACEHOLDER_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown"]);
 const DEFAULT_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown", "radio", "yesno"]);
+const UPLOAD_TYPES = new Set<FieldType>(["file", "images"]);
+const DEFAULT_FILE_ACCEPT = ["pdf", "png", "jpg", "jpeg", "webp", "gif", "txt", "docx"];
+const DEFAULT_IMAGE_ACCEPT = ["png", "jpg", "jpeg", "webp", "gif"];
 const AUTO_BY_TYPE: Partial<Record<FieldType, { value: string; labelKey: string }[]>> = {
   date: [
     { value: "", labelKey: "none" },
@@ -97,7 +102,7 @@ function selectDisplayValue(
 const INPUT_LIKE = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date"]);
 const SELECT_LIKE = new Set<FieldType>(["dropdown", "yesno"]);
 /** Control mock implies the type — skip bold default “New field” titles. */
-const CONTROL_IMPLIED_TYPES = new Set<FieldType>(["email", "phone", "signature"]);
+const CONTROL_IMPLIED_TYPES = new Set<FieldType>(["email", "phone", "signature", "file", "images"]);
 
 /** True when label is empty or the generic palette default in any desk language. */
 function isUselessDefaultLabel(label: string): boolean {
@@ -116,6 +121,15 @@ function defaultInputPlaceholder(type: FieldType, language: string): string {
   if (type === "number") return "0";
   if (type === "date") return "YYYY-MM-DD";
   return "";
+}
+
+function normalizeAccept(raw: unknown, nextType: FieldType): string[] {
+  const fallback = nextType === "images" ? DEFAULT_IMAGE_ACCEPT : DEFAULT_FILE_ACCEPT;
+  if (!Array.isArray(raw)) return [...fallback];
+  const cleaned = raw
+    .map((x) => String(x || "").trim().toLowerCase().replace(/^\./, ""))
+    .filter(Boolean);
+  return cleaned.length ? cleaned : [...fallback];
 }
 
 function normalizeField(field: Record<string, unknown>, nextType: FieldType): Record<string, unknown> {
@@ -147,6 +161,21 @@ function normalizeField(field: Record<string, unknown>, nextType: FieldType): Re
     out.auto = "";
     out.placeholder = "";
     out.default = "";
+  }
+  if (UPLOAD_TYPES.has(nextType)) {
+    out.auto = "";
+    out.placeholder = "";
+    out.default = "";
+    out.accept = normalizeAccept(out.accept, nextType);
+    const maxRaw = Number(out.max_count);
+    if (nextType === "file") {
+      out.max_count = 1;
+    } else {
+      out.max_count = Number.isFinite(maxRaw) && maxRaw >= 1 ? Math.min(Math.floor(maxRaw), 10) : 5;
+    }
+  } else {
+    delete out.accept;
+    delete out.max_count;
   }
   if (!AUTO_BY_TYPE[nextType]) out.auto = "";
   if (!PLACEHOLDER_TYPES.has(nextType)) out.placeholder = "";
@@ -412,6 +441,7 @@ export default function FormBuilder() {
   const showPlaceholder = selected && PLACEHOLDER_TYPES.has(selected.type as FieldType);
   const showDefault = selected && DEFAULT_TYPES.has(selected.type as FieldType);
   const showChoices = selected && CHOICE_TYPES.has(selected.type as FieldType);
+  const showUploadOpts = selected && UPLOAD_TYPES.has(selected.type as FieldType);
   const showRequired = selected && selected.type !== "heading";
 
   return (
@@ -831,6 +861,23 @@ export default function FormBuilder() {
                           <span>{t(language, "type_signature")}</span>
                         </div>
                       ) : null}
+                      {type === "file" ? (
+                        <div className="paper-upload-mock" aria-hidden="true" data-demo="paper-file">
+                          <span className="paper-upload-btn">{t(language, "chooseFile")}</span>
+                          <span className="paper-upload-hint muted">
+                            {(Array.isArray(f.accept) && f.accept.length ? f.accept : DEFAULT_FILE_ACCEPT).join(", ")}
+                          </span>
+                        </div>
+                      ) : null}
+                      {type === "images" ? (
+                        <div className="paper-upload-mock images" aria-hidden="true" data-demo="paper-images">
+                          <span className="paper-upload-btn">{t(language, "chooseImages")}</span>
+                          <span className="paper-upload-hint muted">
+                            {t(language, "maxFiles", { n: Number(f.max_count) || 5 })} ·{" "}
+                            {(Array.isArray(f.accept) && f.accept.length ? f.accept : DEFAULT_IMAGE_ACCEPT).join(", ")}
+                          </span>
+                        </div>
+                      ) : null}
                       {type === "dropdown" && opts.length > 1 ? (
                         <div className="paper-options-hint" dir="auto">
                           {opts.length <= 4 ? opts.join(", ") : `${opts.slice(0, 4).join(", ")}…`}
@@ -926,6 +973,52 @@ export default function FormBuilder() {
                   />{" "}
                   {t(language, "mandatory")}
                 </label>
+              )}
+              {showUploadOpts && (
+                <>
+                  <div className="field">
+                    <label>{t(language, "acceptTypes")}</label>
+                    <input
+                      value={(Array.isArray(selected.accept) ? selected.accept : []).join(", ")}
+                      disabled={frozen}
+                      readOnly={frozen}
+                      placeholder={
+                        selected.type === "images"
+                          ? DEFAULT_IMAGE_ACCEPT.join(", ")
+                          : DEFAULT_FILE_ACCEPT.join(", ")
+                      }
+                      data-demo="field-accept"
+                      onChange={(e) =>
+                        patchSelected({
+                          accept: e.target.value
+                            .split(/[,;\s]+/)
+                            .map((s) => s.trim().toLowerCase().replace(/^\./, ""))
+                            .filter(Boolean),
+                        })
+                      }
+                    />
+                  </div>
+                  {selected.type === "images" ? (
+                    <div className="field">
+                      <label>{t(language, "maxCount")}</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={Number(selected.max_count) || 5}
+                        disabled={frozen}
+                        readOnly={frozen}
+                        data-demo="field-max-count"
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          patchSelected({
+                            max_count: Number.isFinite(n) ? Math.max(1, Math.min(10, Math.floor(n))) : 5,
+                          });
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </>
               )}
               <div className="field">
                 <label>{t(language, "helpText")}</label>
