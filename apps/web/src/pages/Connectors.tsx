@@ -53,11 +53,14 @@ export default function Connectors() {
 
   return (
     <>
-      <div className="eyebrow">Cloud + local context</div>
+      <div className="eyebrow">Cloud + local context · Demo sandbox</div>
       <h1 className="mark" style={{ fontSize: 32 }}>
         Connectors
       </h1>
-      <p className="muted">Google Drive, Microsoft 365, the desk database, and local Ollama models feed the form chatbot and n8n flows.</p>
+      <p className="muted">
+        Google Drive, Microsoft 365, and local DB sync here use <strong>sandbox sample files</strong> for demos (not live OAuth).
+        Ollama below is real when <span className="mono">ollama serve</span> is running. Sandbox + Ollama feed the form chatbot and flows.
+      </p>
       {msg && <p className="pill ok">{msg}</p>}
       <div className="grid cards-3" style={{ marginTop: 16 }}>
         {SOURCES.map((src) => {

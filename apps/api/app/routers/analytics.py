@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.llm import generate
+from app.llm import fast_text
 from app.models import Activity, Document, Notification, User, WorkflowRun
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
@@ -41,7 +41,8 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
             key = row.created_at.strftime("%Y-%m-%d")
             bucket[key] = bucket.get(key, 0) + 1
     daily = sorted(bucket.items())
-    digest = generate(
+    # Fast heuristic only — never call generate()/Ollama here (live-demo warm path).
+    digest = fast_text(
         "analytics",
         f"Docs={docs} ready={ready} failed={failed} runs={runs} classes={dict(classes)}",
     )
@@ -54,7 +55,7 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
         "success_rate": round((completed_runs / runs) * 100, 1) if runs else 100.0,
         "by_class": [{"label": c or "unclassified", "count": n} for c, n in classes],
         "activity_daily": [{"day": d, "count": n} for d, n in daily],
-        "digest": digest["text"],
+        "digest": digest,
     }
 
 

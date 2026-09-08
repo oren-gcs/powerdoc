@@ -32,6 +32,11 @@ def ollama_status(url: str | None = None) -> dict[str, Any]:
     return dict(out)
 
 
+def fast_text(role: str, prompt: str) -> str:
+    """Heuristic-only reply — never blocks on Ollama (safe for Overview / Analytics)."""
+    return _heuristic(role, prompt)
+
+
 def generate(role: str, prompt: str, model: str | None = None) -> dict[str, Any]:
     """Local Ollama first, then OpenAI, then heuristic."""
     settings = get_settings()
