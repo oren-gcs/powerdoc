@@ -69,7 +69,10 @@ test.describe("desk", () => {
     await page.locator("[data-demo=browse-folder]").first().click();
     await page.locator("[data-demo=browse-file]").first().click();
     await page.locator("[data-demo=sync-selected]").click();
-    await expect(page.getByText(/Synced|סונכרן|RAG/i)).toBeVisible({ timeout: 15_000 });
+    // Prefer the success pill — bare "RAG" matches Sync into RAG buttons and blurbs (strict mode).
+    await expect(page.locator("p.pill.ok").filter({ hasText: /Synced into RAG:|סונכרן ל־RAG:/i })).toBeVisible({
+      timeout: 15_000,
+    });
 
     await page.locator("[data-demo=browse-microsoft]").click();
     await page.locator("[data-demo=browse-source]").first().click();
