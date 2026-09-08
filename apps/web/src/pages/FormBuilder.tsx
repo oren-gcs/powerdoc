@@ -885,11 +885,14 @@ export default function FormBuilder() {
                       onChange={(e) => patchSelected({ default: e.target.value })}
                     >
                       <option value="">—</option>
-                      {(selected.options || []).map((o: string) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
+                      {(selected.options || [])
+                        .map((o: string) => String(o).trim())
+                        .filter(Boolean)
+                        .map((o: string) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
                     </select>
                   ) : (
                     <input

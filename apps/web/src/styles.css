@@ -421,6 +421,33 @@ pre.ocr {
   margin: 4px 0 8px;
   font-size: 13px;
 }
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.choice-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.choice-row input {
+  flex: 1;
+  min-width: 0;
+}
+.choice-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.choice-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.choice-empty .field-help {
+  margin: 0;
+}
 .paper-options {
   width: 100%;
   margin-top: 2px;
