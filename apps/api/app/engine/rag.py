@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models import ExtractedField, FeatureFlag, KnowledgeChunk, OCRResult
+from app.models import Document, ExtractedField, FeatureFlag, KnowledgeChunk, OCRResult
 
 # Maps KnowledgeChunk.source_type → feature flag that gates inclusion in retrieve().
 SOURCE_KIND_FLAGS = {
@@ -11,6 +11,10 @@ SOURCE_KIND_FLAGS = {
     "local_db": "rag_source_local_db",
     "local_files": "rag_source_local_files",
     "ocr": "rag_source_ocr",
+    "form_submission": "rag_source_forms",
+    "form_digest": "rag_source_forms",
+    "form_summary": "rag_source_forms",
+    "form_insights": "rag_source_forms",
 }
 
 # Documented retrieve defaults (form compose uses a stricter floor).
@@ -114,7 +118,13 @@ def retrieve(
         else:
             out.append({"title": f"document:{r.document_id}", "text": (r.text or "")[:1200], "source": "ocr", "score": score, "tags": []})
     if not out and fallback_fields:
-        fields = db.query(ExtractedField).limit(20).all()
+        fields = (
+            db.query(ExtractedField)
+            .join(Document, Document.id == ExtractedField.document_id)
+            .filter(Document.tenant_id == tenant_id)
+            .limit(20)
+            .all()
+        )
         if fields:
             text = ", ".join(f"{f.name}={f.value}" for f in fields)
             out.append({"title": "extracted fields", "text": text, "source": "fields", "score": 1, "tags": []})
