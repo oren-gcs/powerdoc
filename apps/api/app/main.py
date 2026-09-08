@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.migrate import ensure_sqlite_columns
 from app.routers import admin, agents, analytics, auth, automations, connectors, documents, forms, health, mcp_http, org, search, workflows
-from app.seed import seed_extensions, seed_if_needed
+from app.seed import ensure_rag_flags, seed_extensions, seed_if_needed
 
 settings = get_settings()
 
@@ -21,6 +21,13 @@ async def lifespan(_: FastAPI):
         try:
             seed_if_needed(db)
             seed_extensions(db)
+            ensure_rag_flags(db)
+        finally:
+            db.close()
+    else:
+        db = SessionLocal()
+        try:
+            ensure_rag_flags(db)
         finally:
             db.close()
     yield

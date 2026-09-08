@@ -6,22 +6,35 @@ const SOURCES = [
   {
     kind: "google_drive",
     title: "Google Drive",
-    blurb: "Sample Drive titles for demo RAG (not live OAuth).",
+    blurb: "Demo catalog — browse Source → Folder → Files (not live OAuth).",
     mark: "G",
   },
   {
     kind: "microsoft",
     title: "Microsoft 365",
-    blurb: "Sample SharePoint / OneDrive titles for demo RAG.",
+    blurb: "Demo catalog — SharePoint / OneDrive sample tree for RAG.",
     mark: "365",
   },
   {
     kind: "local_db",
     title: "Local database",
-    blurb: "OCR text and extracted fields from this tenant’s library.",
+    blurb: "Browse this tenant’s documents and OCR text as files.",
     mark: "DB",
   },
 ];
+
+type BrowseNode = { id: string; name: string; path: string };
+type BrowsePayload = {
+  connector_id: number;
+  kind: string;
+  demo?: boolean;
+  label?: string;
+  path: string;
+  breadcrumbs: BrowseNode[];
+  sources: BrowseNode[];
+  folders: BrowseNode[];
+  files: BrowseNode[];
+};
 
 export default function Connectors() {
   const lang = useDeskLang();
@@ -29,6 +42,11 @@ export default function Connectors() {
   const [msg, setMsg] = useState("");
   const [ollama, setOllama] = useState<any>(null);
   const [pick, setPick] = useState("");
+  const [panel, setPanel] = useState<{ id: number; kind: string; title: string } | null>(null);
+  const [browse, setBrowse] = useState<BrowsePayload | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+
   const load = () => {
     ConnectAPI.list().then(setRows);
     AgentAPI.ollama().then((o) => {
@@ -47,11 +65,77 @@ export default function Connectors() {
     await load();
   };
 
-  const sync = async (id: number) => {
-    const r = await ConnectAPI.sync(id);
-    setMsg(`Synced ${r.synced} files into RAG`);
-    load();
+  const openBrowse = async (id: number, kind: string, title: string, path = "") => {
+    setPanel({ id, kind, title });
+    setSelected({});
+    setBusy(true);
+    try {
+      const data = await ConnectAPI.browse(id, path);
+      setBrowse(data);
+    } catch (e: any) {
+      setMsg(e.message);
+      setPanel(null);
+      setBrowse(null);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const goPath = async (path: string) => {
+    if (!panel) return;
+    setBusy(true);
+    try {
+      const data = await ConnectAPI.browse(panel.id, path);
+      setBrowse(data);
+      if (!path) setSelected({});
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleFile = (path: string) => {
+    setSelected((prev) => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const toggleAllFiles = () => {
+    if (!browse?.files?.length) return;
+    const allOn = browse.files.every((f) => selected[f.path]);
+    const next: Record<string, boolean> = { ...selected };
+    for (const f of browse.files) next[f.path] = !allOn;
+    setSelected(next);
+  };
+
+  const syncSelected = async () => {
+    if (!panel) return;
+    const paths = Object.keys(selected).filter((p) => selected[p]);
+    if (!paths.length) {
+      setMsg(t(lang, "selectFilesFirst"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await ConnectAPI.sync(panel.id, paths);
+      setMsg(`${t(lang, "syncedIntoRag")} ${r.synced}`);
+      await load();
+      setPanel(null);
+      setBrowse(null);
+      setSelected({});
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const closePanel = () => {
+    setPanel(null);
+    setBrowse(null);
+    setSelected({});
+  };
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
 
   return (
     <>
@@ -90,9 +174,23 @@ export default function Connectors() {
                   </button>
                 )}
                 {row && (
-                  <button className="btn primary" data-demo={`sync-${src.kind}`} onClick={() => sync(row.id)}>
-                    {t(lang, "syncIntoRag")}
-                  </button>
+                  <>
+                    <button
+                      className="btn primary"
+                      data-demo={`browse-${src.kind}`}
+                      onClick={() => openBrowse(row.id, src.kind, src.title)}
+                    >
+                      {t(lang, "browse")}
+                    </button>
+                    <button
+                      className="btn"
+                      data-demo={`sync-${src.kind}`}
+                      title={t(lang, "browseFirstHint")}
+                      onClick={() => openBrowse(row.id, src.kind, src.title)}
+                    >
+                      {t(lang, "syncIntoRag")}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -144,6 +242,129 @@ export default function Connectors() {
           </div>
         </div>
       </div>
+
+      {panel && (
+        <div className="browse-mask" onClick={closePanel} data-demo="browse-mask">
+          <div
+            className="browse-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t(lang, "browseSources")}
+            data-demo={`browse-panel-${panel.kind}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="browse-head">
+              <div>
+                <div className="eyebrow">{panel.title}</div>
+                <h2 className="mark" style={{ fontSize: 22, margin: 0 }}>
+                  {t(lang, "browseSources")}
+                </h2>
+                {browse?.label && (
+                  <p className={`pill ${browse.demo ? "warn" : "ok"}`} style={{ marginTop: 8 }}>
+                    {browse.demo ? t(lang, "demoCatalog") : browse.label}
+                  </p>
+                )}
+              </div>
+              <button className="btn" type="button" onClick={closePanel}>
+                {t(lang, "close")}
+              </button>
+            </div>
+
+            <nav className="browse-crumbs" aria-label="Breadcrumb">
+              <button type="button" className="crumb" onClick={() => goPath("")} disabled={busy}>
+                {t(lang, "sources")}
+              </button>
+              {(browse?.breadcrumbs || []).map((c) => (
+                <span key={c.path} className="crumb-wrap">
+                  <span className="crumb-sep" aria-hidden>
+                    ›
+                  </span>
+                  <button type="button" className="crumb" onClick={() => goPath(c.path)} disabled={busy}>
+                    {c.name}
+                  </button>
+                </span>
+              ))}
+            </nav>
+
+            <div className="browse-body">
+              {busy && !browse && <p className="muted">{t(lang, "loading")}</p>}
+
+              {browse && browse.sources.length > 0 && (
+                <ul className="browse-list">
+                  {browse.sources.map((s) => (
+                    <li key={s.path}>
+                      <button type="button" className="browse-row" data-demo="browse-source" onClick={() => goPath(s.path)}>
+                        <span className="browse-kind">{t(lang, "source")}</span>
+                        <span>{s.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {browse && browse.folders.length > 0 && (
+                <ul className="browse-list">
+                  {browse.folders.map((f) => (
+                    <li key={f.path}>
+                      <button
+                        type="button"
+                        className="browse-row"
+                        data-demo="browse-folder"
+                        onClick={() => goPath(f.path)}
+                      >
+                        <span className="browse-kind">{t(lang, "folder")}</span>
+                        <span>{f.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {browse && browse.files.length > 0 && (
+                <>
+                  <div className="browse-files-toolbar">
+                    <button type="button" className="btn" onClick={toggleAllFiles}>
+                      {t(lang, "selectAll")}
+                    </button>
+                    <span className="muted">
+                      {selectedCount} {t(lang, "selected")}
+                    </span>
+                  </div>
+                  <ul className="browse-list files">
+                    {browse.files.map((f) => (
+                      <li key={f.path}>
+                        <label className="browse-file" data-demo="browse-file">
+                          <input type="checkbox" checked={!!selected[f.path]} onChange={() => toggleFile(f.path)} />
+                          <span className="mono">{f.name}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {browse && !browse.sources.length && !browse.folders.length && !browse.files.length && (
+                <p className="muted">{t(lang, "emptyFolder")}</p>
+              )}
+            </div>
+
+            <div className="browse-foot">
+              <button className="btn" type="button" onClick={closePanel}>
+                {t(lang, "cancel")}
+              </button>
+              <button
+                className="btn primary"
+                type="button"
+                data-demo="sync-selected"
+                disabled={busy || selectedCount === 0}
+                onClick={syncSelected}
+              >
+                {t(lang, "syncSelected")} ({selectedCount})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

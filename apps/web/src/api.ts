@@ -165,7 +165,13 @@ export const FormsAPI = {
 export const ConnectAPI = {
   list: () => api("/api/v1/connectors"),
   add: (body: object) => api("/api/v1/connectors", { method: "POST", body: JSON.stringify(body) }),
-  sync: (id: number) => api(`/api/v1/connectors/${id}/sync`, { method: "POST" }),
+  browse: (id: number, path = "") =>
+    api(`/api/v1/connectors/${id}/browse?path=${encodeURIComponent(path)}`),
+  sync: (id: number, paths?: string[]) =>
+    api(`/api/v1/connectors/${id}/sync`, {
+      method: "POST",
+      body: JSON.stringify(paths ? { paths } : {}),
+    }),
 };
 
 export const SearchAPI = {

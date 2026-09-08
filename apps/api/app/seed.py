@@ -138,6 +138,12 @@ def seed_if_needed(db) -> None:
             FeatureFlag(key="automations", enabled=True, description="Trigger matching"),
             FeatureFlag(key="llm_optional", enabled=True, description="Use Ollama/OpenAI when available"),
             FeatureFlag(key="customer_admin", enabled=True, description="Tenant admin console"),
+            FeatureFlag(key="rag", enabled=True, description="Retrieve knowledge chunks for form chat and agents"),
+            FeatureFlag(key="rag_source_google_drive", enabled=True, description="Include Google Drive sandbox chunks in RAG"),
+            FeatureFlag(key="rag_source_microsoft", enabled=True, description="Include Microsoft 365 sandbox chunks in RAG"),
+            FeatureFlag(key="rag_source_local_db", enabled=True, description="Include local database / OCR chunks in RAG"),
+            FeatureFlag(key="rag_source_local_files", enabled=True, description="Include local_files connector chunks in RAG"),
+            FeatureFlag(key="rag_source_ocr", enabled=True, description="Include OCR-derived knowledge chunks in RAG"),
         ]
     )
     db.commit()
@@ -257,3 +263,22 @@ def seed_extensions(db) -> None:
         upsert_chunk(db, tenant.id, "ocr", str(o.document_id), f"doc {o.document_id}", o.text or "")
     db.commit()
 
+
+def ensure_rag_flags(db) -> None:
+    """Idempotent RAG feature flags for upgrades that already seeded core flags."""
+    defaults = [
+        ("rag", "Retrieve knowledge chunks for form chat and agents"),
+        ("rag_source_google_drive", "Include Google Drive sandbox chunks in RAG"),
+        ("rag_source_microsoft", "Include Microsoft 365 sandbox chunks in RAG"),
+        ("rag_source_local_db", "Include local database / OCR chunks in RAG"),
+        ("rag_source_local_files", "Include local_files connector chunks in RAG"),
+        ("rag_source_ocr", "Include OCR-derived knowledge chunks in RAG"),
+    ]
+    existing = {f.key for f in db.query(FeatureFlag).all()}
+    added = False
+    for key, desc in defaults:
+        if key not in existing:
+            db.add(FeatureFlag(key=key, enabled=True, description=desc))
+            added = True
+    if added:
+        db.commit()

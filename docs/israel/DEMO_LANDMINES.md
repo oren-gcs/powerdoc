@@ -24,13 +24,13 @@ Claude’s pitch-prep HTML listed four landmines. Re-checked here:
 | **Hebrew alternate** | `טופס אישור חשבונית` — invoice-shaped fields via heuristics. |
 | **Say** | “The desk drafts fields without waiting on a model. Connect Ollama later for richer chat.” |
 
-## 3. Connectors Sync — SANDBOX fake files?
+## 3. Connectors Sync — demo catalog?
 
 | | |
 |---|---|
-| **Truth** | **Yes.** `apps/api/app/routers/connectors.py` still has `SANDBOX` fake Drive/365/local titles. Sync upserts those into RAG. `local_db` prefers real OCR rows when present, else falls back to sandbox. |
-| **UI** | Connectors page is labeled **Demo sandbox** so you don’t imply live OAuth. |
-| **Say** | “This sync is a sandbox feed for the demo. Production connects real Drive / 365.” |
+| **Truth** | Drive / 365 expose a **demo catalog** (`GET …/browse`) — Source → Folder → Files — not live OAuth. `POST …/sync` with `{paths}` upserts **selected** files into RAG. `local_db` browses real tenant documents / OCR (sample fallback when empty). |
+| **UI** | Connectors → **Browse** opens the picker; Sync selected only after file checkboxes. Labeled **Demo catalog**. |
+| **Say** | “This is a demo catalog so we can show folder/file pick. Production connects real Drive / 365.” |
 | **Don’t** | Let an investor discover fake Sync filenames themselves. |
 
 ## 4. Hebrew i18n — how many keys? RTL where?

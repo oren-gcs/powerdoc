@@ -55,9 +55,13 @@ File / image fields: uploads are scanned (reject risky types); clean files are s
 
 ## Connectors (honest sandbox)
 
-**Connectors → Drive / Microsoft 365 / local DB sync** use **demo sandbox sample files**, not live OAuth. Syncing upserts those samples (or real OCR rows for local DB when present) into RAG for form compose.
+**Connectors → Drive / Microsoft 365** open a **demo catalog** (labeled as such — not live OAuth). Flow: **Browse → Source → Folder → multi-select files → Sync selected into RAG**.
+
+**Local DB** uses the same picker against this tenant’s documents / OCR (falls back to sample rows when the library is empty).
 
 **Ollama** on the same page is real when `ollama serve` is running: pick a model → **Use this model**. Form chat, agents, and flows then prefer that local model.
+
+API: `GET /api/v1/connectors/{id}/browse?path=` · `POST /api/v1/connectors/{id}/sync` with `{ "paths": [...] }`.
 
 Do not present Sync as production cloud connect. Deep integration roadmap lives under `docs/israel/`.
 

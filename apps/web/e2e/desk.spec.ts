@@ -54,7 +54,7 @@ test.describe("desk", () => {
     }
   });
 
-  test("syncs Google Drive, Microsoft 365, and local DB", async ({ page }) => {
+  test("browses and syncs selected connector files into RAG", async ({ page }) => {
     await openTab(page, "/app/connectors");
     await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();
     await expect(page.locator("[data-demo=connector-google_drive]")).toBeVisible();
@@ -62,13 +62,30 @@ test.describe("desk", () => {
     await expect(page.locator("[data-demo=connector-local_db]")).toBeVisible();
     await expect(page.locator("[data-demo=connector-ollama]")).toBeVisible();
     await expect(page.locator("[data-demo=connector-ollama]")).toContainText(/Ollama|offline|connected/i);
-    await page.locator("[data-demo=sync-google_drive]").click();
-    await expect(page.getByText(/Synced/i)).toBeVisible({ timeout: 15_000 });
-    await page.locator("[data-demo=sync-microsoft]").click();
-    await page.locator("[data-demo=sync-local_db]").click();
-    await expect(page.locator("[data-demo=connector-google_drive]")).toContainText(/Drive \//);
-    await expect(page.locator("[data-demo=connector-microsoft]")).toContainText(/SharePoint|OneDrive/);
-    await expect(page.locator("[data-demo=connector-local_db]")).toContainText(/document:|local_db/);
+
+    await page.locator("[data-demo=browse-google_drive]").click();
+    await expect(page.locator("[data-demo=browse-panel-google_drive]")).toBeVisible();
+    await page.locator("[data-demo=browse-source]").first().click();
+    await page.locator("[data-demo=browse-folder]").first().click();
+    await page.locator("[data-demo=browse-file]").first().click();
+    await page.locator("[data-demo=sync-selected]").click();
+    await expect(page.getByText(/Synced|סונכרן|RAG/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.locator("[data-demo=browse-microsoft]").click();
+    await page.locator("[data-demo=browse-source]").first().click();
+    await page.locator("[data-demo=browse-folder]").first().click();
+    await page.locator("[data-demo=browse-file]").first().click();
+    await page.locator("[data-demo=sync-selected]").click();
+
+    await page.locator("[data-demo=browse-local_db]").click();
+    await page.locator("[data-demo=browse-source]").first().click();
+    await page.locator("[data-demo=browse-folder]").first().click();
+    await page.locator("[data-demo=browse-file]").first().click();
+    await page.locator("[data-demo=sync-selected]").click();
+
+    await expect(page.locator("[data-demo=connector-google_drive]")).toContainText(/Drive|Q3|invoices|MSA|Finance|Legal/i);
+    await expect(page.locator("[data-demo=connector-microsoft]")).toContainText(/SharePoint|OneDrive|vendor|site|PO|onboarding/i);
+    await expect(page.locator("[data-demo=connector-local_db]")).toContainText(/document:|local_db|sample|\.pdf|\.txt/i);
   });
 
   test("shows n8n flow canvas and JSON", async ({ page }) => {

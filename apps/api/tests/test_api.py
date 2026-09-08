@@ -490,11 +490,54 @@ def test_n8n_export_and_connectors(client):
     assert any(n["type"] == "n8n-nodes-base.webhook" for n in body["nodes"])
     linked = client.post("/api/v1/connectors", headers=headers, json={"kind": "google_drive", "name": "Drive"})
     assert linked.status_code == 200, linked.text
-    synced = client.post(f"/api/v1/connectors/{linked.json()['id']}/sync", headers=headers)
+    cid = linked.json()["id"]
+    roots = client.get(f"/api/v1/connectors/{cid}/browse", headers=headers)
+    assert roots.status_code == 200, roots.text
+    root = roots.json()
+    assert root["demo"] is True
+    assert root["sources"]
+    source_path = root["sources"][0]["path"]
+    folders = client.get(f"/api/v1/connectors/{cid}/browse", headers=headers, params={"path": source_path})
+    assert folders.status_code == 200
+    assert folders.json()["folders"]
+    folder_path = folders.json()["folders"][0]["path"]
+    files = client.get(f"/api/v1/connectors/{cid}/browse", headers=headers, params={"path": folder_path})
+    assert files.status_code == 200
+    file_paths = [f["path"] for f in files.json()["files"]]
+    assert file_paths
+    synced = client.post(
+        f"/api/v1/connectors/{cid}/sync",
+        headers=headers,
+        json={"paths": file_paths[:1]},
+    )
     assert synced.status_code == 200
-    assert synced.json()["synced"] >= 1
+    assert synced.json()["synced"] == 1
     rows = client.get("/api/v1/connectors", headers=headers)
     assert rows.json()[0]["files"]
+    # empty body still syncs full catalog (compat)
+    full = client.post(f"/api/v1/connectors/{cid}/sync", headers=headers)
+    assert full.status_code == 200
+    assert full.json()["synced"] >= 1
+
+    local = client.post("/api/v1/connectors", headers=headers, json={"kind": "local_db", "name": "DB"})
+    assert local.status_code == 200
+    lid = local.json()["id"]
+    lb = client.get(f"/api/v1/connectors/{lid}/browse", headers=headers)
+    assert lb.status_code == 200
+    assert lb.json()["sources"]
+    sp = lb.json()["sources"][0]["path"]
+    lf = client.get(f"/api/v1/connectors/{lid}/browse", headers=headers, params={"path": sp})
+    assert lf.json()["folders"]
+    fp = lf.json()["folders"][0]["path"]
+    lfiles = client.get(f"/api/v1/connectors/{lid}/browse", headers=headers, params={"path": fp})
+    assert lfiles.json()["files"]
+    lsync = client.post(
+        f"/api/v1/connectors/{lid}/sync",
+        headers=headers,
+        json={"paths": [lfiles.json()["files"][0]["path"]]},
+    )
+    assert lsync.status_code == 200
+    assert lsync.json()["synced"] == 1
 
 
 STUDENT_PROMPT = (

@@ -38,3 +38,7 @@ def ensure_sqlite_columns(engine) -> None:
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_form_shares_token ON form_shares(token)"))
             except Exception:
                 pass
+
+        chunk_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(knowledge_chunks)"))]
+        if chunk_cols and "tags" not in chunk_cols:
+            conn.execute(text("ALTER TABLE knowledge_chunks ADD COLUMN tags JSON DEFAULT '[]'"))

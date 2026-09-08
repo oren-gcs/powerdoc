@@ -383,5 +383,6 @@ class KnowledgeChunk(Base):
     title: Mapped[str] = mapped_column(String(255), default="")
     text: Mapped[str] = mapped_column(Text, default="")
     locale: Mapped[str] = mapped_column(String(16), default="en")
+    tags: Mapped[list] = mapped_column(JSON, default=list)
     extra: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
