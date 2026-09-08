@@ -6,19 +6,19 @@ const SOURCES = [
   {
     kind: "google_drive",
     title: "Google Drive",
-    blurb: "Shared drives, My Drive, PDFs and Docs into unified context.",
+    blurb: "Sample Drive titles for demo RAG (not live OAuth).",
     mark: "G",
   },
   {
     kind: "microsoft",
     title: "Microsoft 365",
-    blurb: "SharePoint libraries and OneDrive files for AP and legal.",
+    blurb: "Sample SharePoint / OneDrive titles for demo RAG.",
     mark: "365",
   },
   {
     kind: "local_db",
     title: "Local database",
-    blurb: "DocFlow SQLite / Postgres — OCR text and extracted fields.",
+    blurb: "OCR text and extracted fields from this tenant’s library.",
     mark: "DB",
   },
 ];
