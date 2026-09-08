@@ -33,4 +33,6 @@ Also named in the session artifact list (may live next to the above):
 - `docflow-review.html`
 - `docpower-loop-round1.html` ← **separate repo** (`doc-power-local-k8s`), not powerdoc
 
-If these HTML files appear under `/workspace` (e.g. sibling import agent), re-distill this folder from them and mark the HTML as canonical.
+**Import status (agent VM):** none of the above HTML files were found under `/mnt/f`, `/f`, `/host/F`, `/opt/cursor`, home, `/tmp`, or `/workspace` globs for `docflow-*.html` / `docpower-*.html`.
+
+**Drop zone:** copy originals into [`html/`](./html/) (see [`html/README.md`](./html/README.md) for the exact filename list + MD map). Prefer HTML over the session paste when they conflict; then re-distill this folder.

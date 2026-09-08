@@ -16,6 +16,7 @@ Distilled from Oren’s Claude strategy session for the **first business-feasibi
 | [CODE_DEBT_MECHIR.md](./CODE_DEBT_MECHIR.md) | What’s still missing before “מכיר” (~10–12 weeks per session) |
 | [DISCOVERY_QUESTIONS.md](./DISCOVERY_QUESTIONS.md) | Discovery framing (session highlight) |
 | [SOURCES.md](./SOURCES.md) | Session sources + unreachable F: HTML inventory |
+| [html/](./html/) | Drop zone for `F:\docflow-*.html` originals (empty until uploaded) |
 
 **Not this PR:** work on `doc-power-local-k8s` / `F:\DevSecOps\…` / `feature/gateway-missing-routes` is a **separate repo** from powerdoc PR #1. Footnote only — do not demo or claim it here.
 
