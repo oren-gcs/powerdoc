@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.migrate import ensure_sqlite_columns
-from app.routers import admin, agents, analytics, auth, automations, connectors, documents, forms, health, mcp_http, org, workflows
+from app.routers import admin, agents, analytics, auth, automations, connectors, documents, forms, health, mcp_http, org, search, workflows
 from app.seed import seed_extensions, seed_if_needed
 
 settings = get_settings()
@@ -53,6 +53,7 @@ app.include_router(org.router)
 app.include_router(forms.router)
 app.include_router(forms.public)
 app.include_router(connectors.router)
+app.include_router(search.router)
 app.include_router(mcp_http.router)
 
 

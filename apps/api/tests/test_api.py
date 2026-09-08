@@ -732,3 +732,64 @@ def test_form_upload_scan_accept_and_reject(client):
     assert key.startswith("t")
     assert "form" in key and "upload" in key.replace("-", "_")
     assert sub["answers"]["doc1"].get("document_id")
+
+
+def test_desk_search_finds_forms_workflows_documents_connectors(client):
+    headers = auth_headers(client)
+    form = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={"name": "Alpha Invoice Gate", "topic": "AP", "description": "", "fields": [], "recipients": []},
+    )
+    assert form.status_code == 200, form.text
+    fid = form.json()["id"]
+
+    wf = client.post(
+        "/api/v1/workflows",
+        headers=headers,
+        json={
+            "name": "Alpha Flow Process",
+            "description": "search me",
+            "trigger": "manual",
+            "steps": [{"key": "ocr", "type": "extract_text", "config": {}}],
+        },
+    )
+    assert wf.status_code == 200, wf.text
+
+    up = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": ("alpha-invoice.txt", io.BytesIO(b"TAX INVOICE INV-1"), "text/plain")},
+        params={"run_pipeline": "false"},
+    )
+    assert up.status_code == 200, up.text
+    did = up.json()["id"]
+
+    conn = client.post(
+        "/api/v1/connectors",
+        headers=headers,
+        json={"kind": "google_drive", "name": "Alpha Drive Link"},
+    )
+    assert conn.status_code == 200, conn.text
+
+    empty = client.get("/api/v1/search?q=", headers=headers)
+    assert empty.status_code == 200
+    assert empty.json()["results"] == []
+
+    r = client.get("/api/v1/search?q=alpha", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    kinds = {hit["kind"] for hit in body["results"]}
+    assert "form" in kinds
+    assert "workflow" in kinds
+    assert "document" in kinds
+    assert "connector" in kinds
+    by_kind = {hit["kind"]: hit for hit in body["results"]}
+    assert by_kind["form"]["href"] == f"/app/forms/{fid}"
+    assert by_kind["document"]["href"] == f"/app/documents/{did}"
+    assert by_kind["connector"]["href"] == "/app/connectors"
+    assert by_kind["workflow"]["href"] == "/app/workflows"
+
+    miss = client.get("/api/v1/search?q=zzznomatch", headers=headers)
+    assert miss.status_code == 200
+    assert miss.json()["results"] == []

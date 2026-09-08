@@ -168,6 +168,10 @@ export const ConnectAPI = {
   sync: (id: number) => api(`/api/v1/connectors/${id}/sync`, { method: "POST" }),
 };
 
+export const SearchAPI = {
+  query: (q: string) => api(`/api/v1/search?q=${encodeURIComponent(q)}`),
+};
+
 export const AdminAPI = {
   stats: () => api("/api/v1/admin/stats"),
   users: () => api("/api/v1/admin/users"),

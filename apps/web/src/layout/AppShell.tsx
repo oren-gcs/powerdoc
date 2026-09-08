@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import DeskSearch from "../components/DeskSearch";
 import { LANGS, dirFor, t } from "../i18n";
 
 const groups = [
@@ -171,6 +172,9 @@ export default function AppShell() {
         </div>
       </aside>
       <div className="workspace">
+        <div className="desk-chrome">
+          <DeskSearch lang={lang} />
+        </div>
         <Outlet />
       </div>
     </div>

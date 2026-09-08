@@ -197,6 +197,95 @@ html[dir=rtl] .rail a.active { box-shadow: inset -2px 0 0 var(--brass); }
 }
 .mobile-bar, .nav-fab, .nav-mask { display: none; }
 .workspace { padding: 28px 32px 48px; min-width: 0; overflow: auto; }
+.desk-chrome {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 18px;
+}
+.desk-search {
+  position: relative;
+  width: min(420px, 100%);
+}
+.desk-search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+  box-shadow: var(--shadow);
+}
+.desk-search-field input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.desk-search-ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  opacity: 0.7;
+}
+.desk-search-drop {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+.desk-search-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 10px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.desk-search-hit:hover,
+.desk-search-hit:focus-visible {
+  background: rgba(255,255,255,0.06);
+  outline: none;
+}
+.desk-search-hit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.desk-search-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desk-search-sub { font-size: 12px; }
+.desk-search-empty { padding: 12px 10px; font-size: 13px; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
 .shell.collapsed .rail a { justify-content: center; padding-inline: 8px; }
 .shell.collapsed .rail a.active { box-shadow: none; }
 .shell.collapsed .brand { justify-content: center; padding-inline: 0; }
@@ -940,6 +1029,8 @@ html[dir=rtl] .form-exit-arrow {
   .shell.nav-open .rail { transform: translateX(0); }
   .hero-copy { padding: 32px 20px; }
   .workspace { padding: 20px; }
+  .desk-chrome { margin-top: 0; }
+  .desk-search { width: 100%; }
 }
 
 .answered-actions { margin-bottom: 8px; }
