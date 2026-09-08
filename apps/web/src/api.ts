@@ -137,8 +137,29 @@ export const FormsAPI = {
     const q = email ? `?email=${encodeURIComponent(email)}` : "";
     return api(`/api/v1/public/forms/${token}${q}`);
   },
-  publicSubmit: (token: string, body: object) =>
-    api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: JSON.stringify(body) }),
+  publicSubmit: (
+    token: string,
+    body: { name?: string; email?: string; answers?: Record<string, unknown>; signature?: string | null; locale?: string },
+    uploads?: Record<string, File[]>
+  ) => {
+    const files = uploads || {};
+    const hasUploads = Object.values(files).some((list) => Array.isArray(list) && list.length > 0);
+    if (!hasUploads) {
+      return api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: JSON.stringify(body) });
+    }
+    const fd = new FormData();
+    fd.append("name", body.name || "");
+    fd.append("email", body.email || "");
+    fd.append("answers", JSON.stringify(body.answers || {}));
+    if (body.signature) fd.append("signature", body.signature);
+    fd.append("locale", body.locale || "en");
+    for (const [fieldId, list] of Object.entries(files)) {
+      for (const file of list || []) {
+        fd.append(`file__${fieldId}`, file);
+      }
+    }
+    return api(`/api/v1/public/forms/${token}/submit`, { method: "POST", body: fd });
+  },
 };
 
 export const ConnectAPI = {

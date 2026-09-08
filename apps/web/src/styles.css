@@ -561,6 +561,39 @@ pre.ocr {
   font-weight: 600;
   pointer-events: none;
 }
+.paper-upload-mock {
+  width: 100%;
+  margin-top: 4px;
+  min-height: 44px;
+  border: 1.5px dashed #3d2f14;
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.7);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.paper-upload-mock.images {
+  min-height: 56px;
+}
+.paper-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1.5px solid #3d2f14;
+  border-radius: 8px;
+  background: #fffdf8;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1408;
+}
+.paper-upload-hint {
+  font-size: 12px;
+  font-weight: 500;
+}
 .paper-options-hint {
   width: 100%;
   margin-top: 4px;
@@ -677,6 +710,23 @@ pre.ocr {
   align-items: center;
   gap: 10px 14px;
   margin-top: 16px;
+}
+.fill-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fill-upload input[type="file"] {
+  max-width: 100%;
+}
+.fill-upload-hint {
+  margin: 0;
+  font-size: 13px;
+}
+.fill-upload-list {
+  margin: 0;
+  padding-inline-start: 1.2em;
+  font-size: 13px;
 }
 .sends-to-note {
   font-size: 13px;

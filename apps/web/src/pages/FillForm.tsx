@@ -18,19 +18,17 @@ function formatSendsTo(entries: SendTo[]): string {
     .join(", ");
 }
 
-function fieldLabelParts(f: any, lang: string, index: number) {
-  const rawLabel = String(f.label || "").trim();
-  const impliedControl = f.type === "email" || f.type === "phone" || f.type === "signature";
-  const uselessDefault =
-    !rawLabel ||
-    rawLabel === t("en", "newField") ||
-    rawLabel === t("he", "newField") ||
-    rawLabel === t("ar", "newField") ||
-    rawLabel === t("es", "newField") ||
-    rawLabel === t("fr", "newField");
-  const hideLabel = impliedControl && uselessDefault;
-  const labelText = hideLabel ? "" : rawLabel;
-  return { rawLabel, hideLabel, labelText, index };
+function acceptAttr(accept: unknown): string | undefined {
+  if (!Array.isArray(accept) || !accept.length) return undefined;
+  return accept
+    .map((x) => {
+      const s = String(x || "").trim().toLowerCase();
+      if (!s) return "";
+      if (s.includes("/")) return s;
+      return `.${s.replace(/^\./, "")}`;
+    })
+    .filter(Boolean)
+    .join(",");
 }
 
 export default function FillForm() {
@@ -39,6 +37,7 @@ export default function FillForm() {
   const emailHint = (searchParams.get("email") || "").trim();
   const [form, setForm] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, File[]>>({});
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [err, setErr] = useState("");
@@ -52,6 +51,10 @@ export default function FillForm() {
   const linkClosed = !!(form?.link_closed || form?.already_submitted);
   const needsEmailConfirm =
     !!(form?.personal && form?.recipient_email && emailHint && form?.email_match === false && !emailConfirmed);
+  const hasUploads = useMemo(
+    () => (form?.fields || []).some((f: any) => f.type === "file" || f.type === "images"),
+    [form]
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -111,18 +114,37 @@ export default function FillForm() {
     };
   }, [form]);
 
+  const setFieldFiles = (fieldId: string, list: FileList | null, maxCount: number) => {
+    const picked = list ? Array.from(list).slice(0, Math.max(1, maxCount)) : [];
+    setFiles((prev) => ({ ...prev, [fieldId]: picked }));
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr("");
     try {
+      for (const field of form.fields || []) {
+        if ((field.type === "file" || field.type === "images") && field.required) {
+          if (!(files[field.id] || []).length) {
+            throw new Error(`${t(lang, "uploadRequired")}: ${field.label || field.id}`);
+          }
+        }
+      }
       const signature = canvas.current?.toDataURL() || null;
-      const r = await FormsAPI.publicSubmit(token!, {
+      const textAnswers: Record<string, string> = { ...answers };
+      for (const field of form.fields || []) {
+        if (field.type === "file" || field.type === "images") {
+          delete textAnswers[field.id];
+        }
+      }
+      const payload = {
         name,
         email: email || form?.recipient_email || "",
-        answers,
+        answers: textAnswers,
         signature,
         locale: form.language,
-      });
+      };
+      const r = await FormsAPI.publicSubmit(token!, payload, hasUploads ? files : undefined);
       setDone(r);
     } catch (ex: any) {
       setErr(ex.message);
@@ -164,7 +186,9 @@ export default function FillForm() {
           <h1 className="mark">{t(lang, "alreadyReceived")}</h1>
           <p className="muted">{t(lang, "linkClosedBody")}</p>
           {form.submission_id ? (
-            <p className="mono muted">{t(lang, "receivedBody", { id: form.submission_id })}</p>
+            <p className="mono muted">
+              {t(lang, "receivedBody", { id: form.submission_id })}
+            </p>
           ) : null}
         </div>
       </div>
@@ -223,58 +247,94 @@ export default function FillForm() {
           />
         </div>
         {form.fields.map((f: any, i: number) => {
-          const { rawLabel, hideLabel, labelText } = fieldLabelParts(f, lang, i);
+          const rawLabel = String(f.label || "").trim();
+          const impliedControl =
+            f.type === "email" || f.type === "phone" || f.type === "signature" || f.type === "file" || f.type === "images";
+          const uselessDefault =
+            !rawLabel ||
+            rawLabel === t("en", "newField") ||
+            rawLabel === t("he", "newField") ||
+            rawLabel === t("ar", "newField") ||
+            rawLabel === t("es", "newField") ||
+            rawLabel === t("fr", "newField");
+          const hideLabel = impliedControl && uselessDefault;
+          const labelText = hideLabel ? "" : rawLabel;
+          const maxCount = f.type === "images" ? Math.max(1, Number(f.max_count) || 5) : 1;
+          const picked = files[f.id] || [];
           return (
-            <div className="field" key={f.id}>
-              {f.type === "heading" ? (
-                <h3>{labelText || rawLabel}</h3>
-              ) : (
-                <>
-                  {!hideLabel || f.required ? (
-                    <label>
-                      {labelText ? (
-                        <>
-                          {i + 1}. {labelText}
-                        </>
-                      ) : null}{" "}
-                      {f.required ? "*" : ""}
-                    </label>
-                  ) : null}
-                  {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
-                  {f.type === "textarea" ? (
-                    <textarea
-                      value={answers[f.id] || ""}
-                      placeholder={f.placeholder || undefined}
-                      onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
-                      required={f.required}
-                    />
-                  ) : f.type === "dropdown" || f.type === "radio" ? (
-                    <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
-                      <option value="">{f.placeholder || "—"}</option>
-                      {(f.options || []).map((o: string) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                  ) : f.type === "yesno" ? (
-                    <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
-                      <option value="">—</option>
-                      <option value="yes">{t(lang, "yes")}</option>
-                      <option value="no">{t(lang, "no")}</option>
-                    </select>
-                  ) : f.type === "signature" ? (
-                    <canvas ref={canvas} width={364} height={98} className="sign-pad" />
-                  ) : (
+          <div className="field" key={f.id}>
+            {f.type === "heading" ? (
+              <h3>{labelText || rawLabel}</h3>
+            ) : (
+              <>
+                {!hideLabel || f.required ? (
+                  <label>
+                    {labelText ? (
+                      <>
+                        {i + 1}. {labelText}
+                      </>
+                    ) : null}{" "}
+                    {f.required ? "*" : ""}
+                  </label>
+                ) : null}
+                {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
+                {f.type === "textarea" ? (
+                  <textarea
+                    value={answers[f.id] || ""}
+                    placeholder={f.placeholder || undefined}
+                    onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
+                    required={f.required}
+                  />
+                ) : f.type === "dropdown" || f.type === "radio" ? (
+                  <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
+                    <option value="">{f.placeholder || "—"}</option>
+                    {(f.options || []).map((o: string) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                ) : f.type === "yesno" ? (
+                  <select value={answers[f.id] || ""} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} required={f.required}>
+                    <option value="">—</option>
+                    <option value="yes">{t(lang, "yes")}</option>
+                    <option value="no">{t(lang, "no")}</option>
+                  </select>
+                ) : f.type === "signature" ? (
+                  <canvas ref={canvas} width={364} height={98} className="sign-pad" />
+                ) : f.type === "file" || f.type === "images" ? (
+                  <div className="fill-upload" data-demo={f.type === "images" ? "upload-images" : "upload-file"}>
                     <input
-                      type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
-                      required={f.required}
-                      placeholder={f.placeholder || undefined}
-                      value={answers[f.id] || ""}
-                      onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
+                      type="file"
+                      accept={acceptAttr(f.accept)}
+                      multiple={f.type === "images"}
+                      required={!!f.required && picked.length === 0}
+                      onChange={(e) => setFieldFiles(f.id, e.target.files, maxCount)}
                     />
-                  )}
-                </>
-              )}
-            </div>
+                    <p className="muted fill-upload-hint">
+                      {f.type === "images"
+                        ? t(lang, "maxFiles", { n: maxCount })
+                        : t(lang, "chooseFile")}
+                      {Array.isArray(f.accept) && f.accept.length ? ` · ${f.accept.join(", ")}` : ""}
+                    </p>
+                    {picked.length ? (
+                      <ul className="fill-upload-list">
+                        {picked.map((file) => (
+                          <li key={`${file.name}-${file.size}`}>{file.name}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : (
+                  <input
+                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
+                    required={f.required}
+                    placeholder={f.placeholder || undefined}
+                    value={answers[f.id] || ""}
+                    onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}
+                  />
+                )}
+              </>
+            )}
+          </div>
           );
         })}
         {err && <p className="pill bad">{err}</p>}
