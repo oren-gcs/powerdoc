@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "docflow": {
+      "command": "python",
+      "args": ["apps/mcp/server.py"],
+      "env": {
+        "DOCFLOW_API": "http://127.0.0.1:8000",
+        "DOCFLOW_EMAIL": "oren@gcs-tech.org",
+        "DOCFLOW_PASSWORD": "DocFlow!2026"
+      }
+    }
+  }
+}

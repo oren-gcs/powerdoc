@@ -1,0 +1,6 @@
+name: contract-legal
+trigger: on_classify
+match:
+  classification: contract
+workflow: Contract Review
+description: Send agreements to the legal review flow.
