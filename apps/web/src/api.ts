@@ -185,6 +185,20 @@ export const AdminAPI = {
   block: (id: number) => api(`/api/v1/admin/users/${id}/block`, { method: "POST" }),
   tenants: () => api("/api/v1/admin/tenants"),
   flags: () => api("/api/v1/admin/flags"),
+  toggleFlag: (key: string) => api(`/api/v1/admin/flags/${encodeURIComponent(key)}/toggle`, { method: "POST" }),
   models: () => api("/api/v1/admin/models"),
   health: () => api("/api/v1/admin/health"),
+  ragSources: () => api("/api/v1/admin/rag/sources"),
+  ragToggleSource: (id: number) => api(`/api/v1/admin/rag/sources/${id}/toggle`, { method: "POST" }),
+  ragChunks: (params?: { q?: string; tag?: string; source_type?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.tag) sp.set("tag", params.tag);
+    if (params?.source_type) sp.set("source_type", params.source_type);
+    const qs = sp.toString();
+    return api(`/api/v1/admin/rag/chunks${qs ? `?${qs}` : ""}`);
+  },
+  ragPatchTags: (id: number, tags: string[]) =>
+    api(`/api/v1/admin/rag/chunks/${id}/tags`, { method: "PATCH", body: JSON.stringify({ tags }) }),
+  ragSettings: () => api("/api/v1/admin/rag/settings"),
 };

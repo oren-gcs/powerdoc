@@ -29,6 +29,7 @@ const groups = [
     key: "control",
     items: [
       ["connectors", "/app/connectors"],
+      ["systemRag", "/app/system/rag", "platform_admin"],
       ["analytics", "/app/analytics"],
       ["admin", "/app/admin"],
     ],
@@ -46,6 +47,7 @@ const ICON: Record<string, string> = {
   inbox: "M3 6h18v12H3zM3 6l9 7 9-7",
   agents: "M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z",
   connectors: "M7 7h4v4H7zM13 13h4v4h-4zM11 9l4 4",
+  systemRag: "M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z",
   analytics: "M5 19V9h3v10zM10.5 19V5h3v14zM16 19v-7h3v7z",
   admin: "M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z",
 };
@@ -130,7 +132,15 @@ export default function AppShell() {
           {groups.map((g) => (
             <div key={g.key} className="nav-group">
               {expanded && <div className="nav-label">{t(lang, g.key)}</div>}
-              {g.items.map(([key, to]) => (
+              {g.items
+                .filter((item) => {
+                  const role = (item as string[])[2];
+                  if (!role) return true;
+                  return user?.role === role;
+                })
+                .map((item) => {
+                const [key, to] = item as [string, string];
+                return (
                 <NavLink
                   key={to}
                   to={to}
@@ -142,7 +152,8 @@ export default function AppShell() {
                   <Icon name={key} />
                   {expanded && <span>{t(lang, key)}</span>}
                 </NavLink>
-              ))}
+              );
+              })}
             </div>
           ))}
         </nav>

@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require
+from app.engine.rag import (
+    RAG_MIN_SCORE_DEFAULT,
+    RAG_MIN_SCORE_FORM_COMPOSE,
+    SOURCE_KIND_FLAGS,
+    enabled_source_kinds,
+    rag_master_enabled,
+)
 from app.llm import ollama_status
-from app.models import Document, FeatureFlag, ModelBinding, Tenant, User, WorkflowRun
+from app.models import Connector, Document, FeatureFlag, KnowledgeChunk, ModelBinding, Tenant, User, WorkflowRun
 from app.schemas import UserOut
 from app.security import hash_password
 
@@ -19,6 +26,22 @@ class UserCreate(BaseModel):
     password: str
     role: str = "operator"
     tenant_id: int | None = None
+
+
+class ChunkTagsIn(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+
+
+def _normalize_tags(tags: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in tags:
+        t = (raw or "").strip().lower()[:64]
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out[:40]
 
 
 @router.get("/stats")
@@ -150,4 +173,157 @@ def health(db: Session = Depends(get_db), _user: User = Depends(require("admin")
         "users": db.query(User).count(),
         "documents": db.query(Document).count(),
         "ollama": ollama_status(),
+    }
+
+
+@router.get("/rag/sources")
+def rag_sources(user: User = Depends(require("platform_admin")), db: Session = Depends(get_db)):
+    """Cross-tenant connector / source inventory for platform RAG control."""
+    tenants = {t.id: t for t in db.query(Tenant).all()}
+    kinds_on = enabled_source_kinds(db)
+    rows = db.query(Connector).order_by(Connector.tenant_id.asc(), Connector.id.asc()).all()
+    out = []
+    for c in rows:
+        chunk_count = (
+            db.query(KnowledgeChunk)
+            .filter(KnowledgeChunk.tenant_id == c.tenant_id, KnowledgeChunk.source_type == c.kind)
+            .count()
+        )
+        tenant = tenants.get(c.tenant_id)
+        out.append(
+            {
+                "id": c.id,
+                "tenant_id": c.tenant_id,
+                "tenant_name": tenant.name if tenant else f"tenant:{c.tenant_id}",
+                "kind": c.kind,
+                "name": c.name,
+                "status": c.status,
+                "enabled": c.status != "disabled",
+                "kind_enabled": c.kind in kinds_on,
+                "file_count": c.file_count,
+                "chunk_count": chunk_count,
+                "last_sync_at": c.last_sync_at.isoformat() if c.last_sync_at else None,
+            }
+        )
+    # Also summarize OCR / orphan knowledge source types with no connector row.
+    for kind, count in (
+        db.query(KnowledgeChunk.source_type, func.count(KnowledgeChunk.id))
+        .group_by(KnowledgeChunk.source_type)
+        .all()
+    ):
+        if any(r["kind"] == kind for r in out):
+            continue
+        out.append(
+            {
+                "id": None,
+                "tenant_id": None,
+                "tenant_name": "(all tenants)",
+                "kind": kind,
+                "name": f"{kind} knowledge",
+                "status": "library",
+                "enabled": kind in kinds_on,
+                "kind_enabled": kind in kinds_on,
+                "file_count": count,
+                "chunk_count": count,
+                "last_sync_at": None,
+            }
+        )
+    return {
+        "rag_enabled": rag_master_enabled(db),
+        "sources": out,
+        "connectors_href": "/app/connectors",
+    }
+
+
+@router.post("/rag/sources/{connector_id}/toggle")
+def rag_source_toggle(connector_id: int, user: User = Depends(require("platform_admin")), db: Session = Depends(get_db)):
+    c = db.get(Connector, connector_id)
+    if not c:
+        raise HTTPException(404, "Connector not found")
+    c.status = "connected" if c.status == "disabled" else "disabled"
+    db.commit()
+    return {"id": c.id, "status": c.status, "enabled": c.status != "disabled"}
+
+
+@router.get("/rag/chunks")
+def rag_chunks(
+    user: User = Depends(require("platform_admin")),
+    db: Session = Depends(get_db),
+    tenant_id: int | None = None,
+    source_type: str | None = None,
+    tag: str | None = None,
+    q: str | None = None,
+    limit: int = 100,
+):
+    limit = max(1, min(limit, 500))
+    query = db.query(KnowledgeChunk)
+    if tenant_id is not None:
+        query = query.filter(KnowledgeChunk.tenant_id == tenant_id)
+    if source_type:
+        query = query.filter(KnowledgeChunk.source_type == source_type)
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter((KnowledgeChunk.title.ilike(like)) | (KnowledgeChunk.text.ilike(like)))
+    rows = query.order_by(KnowledgeChunk.id.desc()).limit(limit).all()
+    tenants = {t.id: t.name for t in db.query(Tenant).all()}
+    items = []
+    needle = (tag or "").strip().lower()
+    for r in rows:
+        tags = list(r.tags or [])
+        if needle and needle not in [t.lower() for t in tags]:
+            continue
+        items.append(
+            {
+                "id": r.id,
+                "tenant_id": r.tenant_id,
+                "tenant_name": tenants.get(r.tenant_id, f"tenant:{r.tenant_id}"),
+                "source_type": r.source_type,
+                "source_id": r.source_id,
+                "title": r.title,
+                "text_preview": (r.text or "")[:240],
+                "locale": r.locale,
+                "tags": tags,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return {"chunks": items, "count": len(items)}
+
+
+@router.patch("/rag/chunks/{chunk_id}/tags")
+def rag_chunk_tags(chunk_id: int, body: ChunkTagsIn, user: User = Depends(require("platform_admin")), db: Session = Depends(get_db)):
+    row = db.get(KnowledgeChunk, chunk_id)
+    if not row:
+        raise HTTPException(404, "Chunk not found")
+    row.tags = _normalize_tags(body.tags)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "tags": list(row.tags or [])}
+
+
+@router.get("/rag/settings")
+def rag_settings(user: User = Depends(require("platform_admin")), db: Session = Depends(get_db)):
+    from app.seed import ensure_rag_flags
+
+    ensure_rag_flags(db)
+    flags = (
+        db.query(FeatureFlag)
+        .filter((FeatureFlag.key == "rag") | (FeatureFlag.key.like("rag_%")))
+        .order_by(FeatureFlag.key.asc())
+        .all()
+    )
+    return {
+        "rag_enabled": rag_master_enabled(db),
+        "enabled_source_kinds": sorted(enabled_source_kinds(db)),
+        "source_kind_flags": SOURCE_KIND_FLAGS,
+        "min_score": {
+            "default": RAG_MIN_SCORE_DEFAULT,
+            "form_compose": RAG_MIN_SCORE_FORM_COMPOSE,
+            "notes": (
+                "Token overlap floor in retrieve(). Default=1 for general retrieval; "
+                "form compose uses min_score=3 and disables field fallback so chat stays on real knowledge."
+            ),
+        },
+        "flags": [{"key": f.key, "enabled": f.enabled, "description": f.description} for f in flags],
+        "connectors_href": "/app/connectors",
+        "tenant_note": "Tenant operators sync files on Connectors; this page is platform-wide RAG control.",
     }

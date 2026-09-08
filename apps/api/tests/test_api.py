@@ -836,3 +836,82 @@ def test_desk_search_finds_forms_workflows_documents_connectors(client):
     miss = client.get("/api/v1/search?q=zzznomatch", headers=headers)
     assert miss.status_code == 200
     assert miss.json()["results"] == []
+
+def _promote_platform_admin(email: str = "demo@example.com") -> None:
+    from app.db import SessionLocal
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.email == email).first()
+        assert u is not None
+        u.role = "platform_admin"
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_system_rag_requires_platform_admin(client):
+    headers = auth_headers(client)
+    denied = client.get("/api/v1/admin/rag/settings", headers=headers)
+    assert denied.status_code == 403
+
+    _promote_platform_admin()
+    ok = client.get("/api/v1/admin/rag/settings", headers=headers)
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["rag_enabled"] is True
+    assert body["min_score"]["default"] == 1
+    assert body["min_score"]["form_compose"] == 3
+    assert any(f["key"] == "rag" for f in body["flags"])
+    assert any(f["key"].startswith("rag_source_") for f in body["flags"])
+
+
+def test_system_rag_chunks_tags_and_source_toggle(client):
+    headers = auth_headers(client)
+    _promote_platform_admin()
+
+    conn = client.post(
+        "/api/v1/connectors",
+        headers=headers,
+        json={"kind": "google_drive", "name": "RAG Drive"},
+    )
+    assert conn.status_code == 200, conn.text
+    cid = conn.json()["id"]
+
+    sync = client.post(f"/api/v1/connectors/{cid}/sync", headers=headers, json={})
+    assert sync.status_code == 200, sync.text
+    assert sync.json()["synced"] >= 1
+
+    sources = client.get("/api/v1/admin/rag/sources", headers=headers)
+    assert sources.status_code == 200, sources.text
+    assert any(s.get("id") == cid for s in sources.json()["sources"])
+
+    chunks = client.get("/api/v1/admin/rag/chunks", headers=headers)
+    assert chunks.status_code == 200, chunks.text
+    items = chunks.json()["chunks"]
+    assert items
+    chunk_id = items[0]["id"]
+
+    tagged = client.patch(
+        f"/api/v1/admin/rag/chunks/{chunk_id}/tags",
+        headers=headers,
+        json={"tags": ["finance", "invoice", "Finance"]},
+    )
+    assert tagged.status_code == 200, tagged.text
+    assert tagged.json()["tags"] == ["finance", "invoice"]
+
+    filtered = client.get("/api/v1/admin/rag/chunks?tag=finance", headers=headers)
+    assert filtered.status_code == 200
+    assert any(c["id"] == chunk_id for c in filtered.json()["chunks"])
+
+    toggled = client.post(f"/api/v1/admin/rag/sources/{cid}/toggle", headers=headers)
+    assert toggled.status_code == 200
+    assert toggled.json()["enabled"] is False
+
+    blocked = client.post(f"/api/v1/connectors/{cid}/sync", headers=headers, json={})
+    assert blocked.status_code == 403
+
+    flag = client.post("/api/v1/admin/flags/rag_source_google_drive/toggle", headers=headers)
+    assert flag.status_code == 200
+    assert flag.json()["enabled"] is False

@@ -38,6 +38,9 @@ export default function Admin() {
       <h1 className="mark" style={{ fontSize: 32 }}>
         Admin
       </h1>
+      <p className="muted">
+        <a href="/app/system/rag">System RAG</a> — platform knowledge sources, tags, and RAG options (platform_admin).
+      </p>
       <div className="grid cards-4">
         <div className="card stat">
           <div className="eyebrow">Users</div>

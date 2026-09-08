@@ -20,6 +20,7 @@ import FormBuilder from "./pages/FormBuilder";
 import FormAnswered from "./pages/FormAnswered";
 import FillForm from "./pages/FillForm";
 import Connectors from "./pages/Connectors";
+import SystemRag from "./pages/SystemRag";
 
 function Guard({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth();
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="inbox" element={<Inbox />} />
         <Route path="manage" element={<Manage />} />
         <Route path="connectors" element={<Connectors />} />
+        <Route path="system/rag" element={<SystemRag />} />
         <Route path="admin" element={<Admin />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

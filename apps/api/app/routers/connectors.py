@@ -495,6 +495,8 @@ def sync(
     db: Session = Depends(get_db),
 ):
     c = _get_connector(db, connector_id, user)
+    if c.status == "disabled":
+        raise HTTPException(403, "Connector disabled by platform RAG control")
     paths = list((body.paths if body else None) or [])
 
     if c.kind in DEMO_CATALOGS:
