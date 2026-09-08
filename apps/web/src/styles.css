@@ -481,6 +481,11 @@ pre.ocr {
   font-size: 11px;
   letter-spacing: 0.04em;
 }
+.paper-label {
+  color: #1a1408;
+  font-weight: 700;
+  word-break: break-word;
+}
 .paper-row-actions {
   display: inline-flex;
   align-items: center;

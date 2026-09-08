@@ -191,26 +191,35 @@ export default function FormBuilder() {
       setTopic(f.topic || "");
       setDescription(f.description || "");
       setPrompt(f.description || "");
-      setFields(f.fields || []);
+      const next = normalizeFields(f.fields || []);
+      setFields(next);
       setRecipientsText((f.recipients || []).join(", "));
       setFormId(f.id);
       setLocked(!!f.locked);
       setArchived(!!f.archived);
       setSubmissionCount(f.submission_count || 0);
       setSel(0);
+      setChoicesDraft(null);
       if (f.share_url) setShare(f.share_url);
     });
   }, [id]);
 
   const frozen = locked || archived;
+  const selectedId = selected?.id as string | undefined;
+
+  useEffect(() => {
+    setChoicesDraft(null);
+  }, [selectedId, sel]);
 
   const move = (from: number, to: number) => {
     if (frozen) return;
-    if (to < 0 || to >= fields.length) return;
-    const next = fields.slice();
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    setFields(next);
+    setFields((prev) => {
+      if (to < 0 || to >= prev.length) return prev;
+      const next = prev.slice();
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
     setSel(to);
   };
 
@@ -218,33 +227,40 @@ export default function FormBuilder() {
     if (frozen) return;
     const label = fields[index]?.label || `Line ${index + 1}`;
     if (!window.confirm(`Delete field “${label}”?`)) return;
-    const next = fields.slice();
-    next.splice(index, 1);
-    setFields(next);
+    setFields((prev) => {
+      const next = prev.slice();
+      next.splice(index, 1);
+      return next;
+    });
+    setChoicesDraft(null);
     setSel((prev) => {
-      if (!next.length) return 0;
+      const remaining = fields.length - 1;
+      if (remaining <= 0) return 0;
       if (prev > index) return prev - 1;
-      if (prev === index) return Math.min(index, next.length - 1);
+      if (prev === index) return Math.min(index, remaining - 1);
       return prev;
     });
   };
 
   const patchSelected = (patch: Record<string, unknown>) => {
     if (frozen) return;
-    const cur = fields[sel];
-    if (!cur) return;
-    const next = fields.slice();
-    next[sel] = { ...cur, ...patch };
-    setFields(next);
+    setFields((prev) => {
+      if (sel < 0 || sel >= prev.length) return prev;
+      const next = prev.slice();
+      next[sel] = { ...next[sel], ...patch };
+      return next;
+    });
   };
 
   const changeSelectedType = (type: FieldType) => {
     if (frozen) return;
-    const cur = fields[sel];
-    if (!cur) return;
-    const next = fields.slice();
-    next[sel] = normalizeField(cur, type);
-    setFields(next);
+    setChoicesDraft(null);
+    setFields((prev) => {
+      if (sel < 0 || sel >= prev.length) return prev;
+      const next = prev.slice();
+      next[sel] = normalizeField(next[sel], type);
+      return next;
+    });
   };
 
   const add = (type: string) => {
@@ -257,8 +273,12 @@ export default function FormBuilder() {
       },
       type as FieldType
     );
-    setFields([...fields, field]);
-    setSel(fields.length);
+    setFields((prev) => {
+      const next = [...prev, field];
+      setSel(next.length - 1);
+      return next;
+    });
+    setChoicesDraft(null);
   };
 
   const toggleDeskUser = (email: string) => {
@@ -306,8 +326,9 @@ export default function FormBuilder() {
       if (r.topic) setTopic(r.topic);
       if (r.description) setDescription(r.description);
       else setDescription(asked.slice(0, 400));
-      setFields(r.fields || []);
+      setFields(normalizeFields(r.fields || []));
       setSel(0);
+      setChoicesDraft(null);
       setThread((prev) => [
         ...prev,
         {
@@ -622,7 +643,7 @@ export default function FormBuilder() {
             const snippet = optionsSnippet(f);
             return (
               <div
-                key={f.id}
+                key={f.id || `field-${i}`}
                 className={`paper-row ${sel === i ? "on" : ""}`}
                 draggable={!frozen}
                 onDragStart={(e) => !frozen && e.dataTransfer.setData("text/plain", String(i))}
@@ -632,16 +653,21 @@ export default function FormBuilder() {
                   if (frozen) return;
                   move(Number(e.dataTransfer.getData("text/plain")), i);
                 }}
-                onClick={() => setSel(i)}
+                onClick={() => {
+                  setSel(i);
+                  setChoicesDraft(null);
+                }}
                 data-demo="paper-row"
               >
                 <span className="line-no">{i + 1}</span>
                 <div className="paper-row-main">
                   <div className="mono paper-row-type">{f.type}</div>
-                  <strong data-demo="paper-label">{f.label}</strong>
-                  {f.required && <span className="pill bad">required</span>}
+                  <strong className="paper-label" dir="auto" data-demo="paper-label">
+                    {f.label || "Untitled"}
+                  </strong>
+                  {f.required ? <span className="pill bad">required</span> : null}
                   {snippet ? (
-                    <div className="muted paper-options" data-demo="paper-options">
+                    <div className="paper-options" dir="auto" data-demo="paper-options">
                       {snippet}
                     </div>
                   ) : null}
@@ -712,6 +738,7 @@ export default function FormBuilder() {
                   value={selected.label || ""}
                   disabled={frozen}
                   readOnly={frozen}
+                  dir="auto"
                   data-demo="field-label"
                   onChange={(e) => patchSelected({ label: e.target.value })}
                 />
@@ -756,21 +783,20 @@ export default function FormBuilder() {
                 <div className="field">
                   <label>Choices (comma)</label>
                   <input
-                    value={(selected.options || []).join(", ")}
+                    value={choicesDraft ?? (selected.options || []).join(", ")}
                     disabled={frozen}
                     readOnly={frozen}
+                    dir="auto"
                     data-demo="field-choices"
-                    onChange={(e) =>
-                      patchSelected({
-                        options: e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setChoicesDraft(raw);
+                      patchSelected({ options: parseChoices(raw) });
+                    }}
+                    onBlur={() => setChoicesDraft(null)}
                   />
-                  <div className="muted paper-options" data-demo="choices-preview">
-                    {(selected.options || []).filter(Boolean).join(" · ") || "no choices"}
+                  <div className="muted field-help" data-demo="choices-preview">
+                    {(selected.options || []).filter(Boolean).join(", ") || "no choices yet"}
                   </div>
                 </div>
               )}
