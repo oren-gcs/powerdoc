@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { FormsAPI } from "../api";
 import FormExit from "../components/FormExit";
 import { dirFor, t } from "../i18n";
@@ -20,33 +20,43 @@ function formatSendsTo(entries: SendTo[]): string {
 
 export default function FillForm() {
   const { token } = useParams();
+  const [searchParams] = useSearchParams();
+  const emailHint = (searchParams.get("email") || "").trim();
   const [form, setForm] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [err, setErr] = useState("");
   const [done, setDone] = useState<any>(null);
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
   const lang = form?.language || "en";
   const sendsToLabel = useMemo(() => formatSendsTo(form?.sends_to || []), [form]);
+  const linkClosed = !!(form?.link_closed || form?.already_submitted);
+  const needsEmailConfirm =
+    !!(form?.personal && form?.recipient_email && emailHint && form?.email_match === false && !emailConfirmed);
 
   useEffect(() => {
     if (!token) return;
-    FormsAPI.publicGet(token).then((f) => {
-      setForm(f);
-      const today = new Date().toISOString().slice(0, 10);
-      const seed: Record<string, string> = {};
-      for (const field of f.fields || []) {
-        if (field.type === "date" && field.auto === "today") seed[field.id] = today;
-        else if (field.default != null && field.default !== "") seed[field.id] = String(field.default);
-      }
-      setAnswers(seed);
-      document.documentElement.lang = f.language;
-      document.documentElement.dir = dirFor(f.language);
-    }).catch((e) => setErr(e.message));
-  }, [token]);
+    FormsAPI.publicGet(token, emailHint || undefined)
+      .then((f) => {
+        setForm(f);
+        const today = new Date().toISOString().slice(0, 10);
+        const seed: Record<string, string> = {};
+        for (const field of f.fields || []) {
+          if (field.type === "date" && field.auto === "today") seed[field.id] = today;
+          else if (field.default != null && field.default !== "") seed[field.id] = String(field.default);
+        }
+        setAnswers(seed);
+        if (f.recipient_email) setEmail(f.recipient_email);
+        else if (emailHint) setEmail(emailHint);
+        document.documentElement.lang = f.language;
+        document.documentElement.dir = dirFor(f.language);
+      })
+      .catch((e) => setErr(e.message));
+  }, [token, emailHint]);
 
   useEffect(() => {
     const c = canvas.current;
@@ -91,7 +101,13 @@ export default function FillForm() {
     setErr("");
     try {
       const signature = canvas.current?.toDataURL() || null;
-      const r = await FormsAPI.publicSubmit(token!, { name, email, answers, signature, locale: form.language });
+      const r = await FormsAPI.publicSubmit(token!, {
+        name,
+        email: email || form?.recipient_email || "",
+        answers,
+        signature,
+        locale: form.language,
+      });
       setDone(r);
     } catch (ex: any) {
       setErr(ex.message);
@@ -105,11 +121,67 @@ export default function FillForm() {
           <FormExit fallback="/" variant="on-paper" />
           <h1 className="mark">{t(lang, "received")}</h1>
           <p>{t(lang, "receivedBody", { id: done.submission_id })}</p>
+          <p className="muted">{t(lang, "linkClosedAfterSubmit")}</p>
         </div>
       </div>
     );
   }
-  if (!form) return <p className="muted">{err || t("en", "loadingForm")}</p>;
+
+  if (!form && err) {
+    return (
+      <div className="fill-wrap">
+        <div className="paper fill-sheet">
+          <FormExit fallback="/" variant="on-paper" />
+          <p className="pill bad">{err}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!form) return <p className="muted">{t("en", "loadingForm")}</p>;
+
+  if (linkClosed) {
+    return (
+      <div className="fill-wrap" dir={dirFor(lang)} lang={lang}>
+        <div className="paper fill-sheet">
+          <FormExit fallback="/" variant="on-paper" />
+          <div className="eyebrow">DocFlow</div>
+          <h1 className="mark">{t(lang, "alreadyReceived")}</h1>
+          <p className="muted">{t(lang, "linkClosedBody")}</p>
+          {form.submission_id ? (
+            <p className="mono muted">
+              {t(lang, "receivedBody", { id: form.submission_id })}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (needsEmailConfirm) {
+    return (
+      <div className="fill-wrap" dir={dirFor(lang)} lang={lang}>
+        <div className="paper fill-sheet">
+          <FormExit fallback="/" variant="on-paper" />
+          <div className="eyebrow">DocFlow</div>
+          <h1 className="mark">{form.name}</h1>
+          <p>{t(lang, "emailConfirmMismatch", { email: emailHint, invite: form.recipient_email })}</p>
+          <div className="row-actions">
+            <button
+              className="btn primary"
+              type="button"
+              onClick={() => {
+                setEmail(form.recipient_email);
+                setEmailConfirmed(true);
+              }}
+            >
+              {t(lang, "continueAsInvitee", { email: form.recipient_email })}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fill-wrap" dir={dirFor(lang)} lang={lang}>
@@ -118,13 +190,24 @@ export default function FillForm() {
         <div className="eyebrow">DocFlow</div>
         <h1 className="mark">{form.name}</h1>
         <p className="muted">{form.description}</p>
+        {form.personal && form.recipient_email ? (
+          <p className="muted" data-demo="personal-invite">
+            {t(lang, "personalInviteFor", { email: form.recipient_email })}
+          </p>
+        ) : null}
         <div className="field">
           <label>{t(lang, "yourName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
           <label>{t(lang, "email")}</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            required
+            readOnly={!!form.personal && !!form.recipient_email}
+          />
         </div>
         {form.fields.map((f: any, i: number) => {
           const rawLabel = String(f.label || "").trim();

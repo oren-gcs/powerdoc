@@ -774,7 +774,6 @@ export default function FormBuilder() {
               >
                 <span className="line-no">{i + 1}</span>
                 <div className="paper-row-main">
-                  <div className="mono paper-row-type">{f.type}</div>
                   {type === "heading" ? (
                     <h3 className="paper-heading" dir="auto" data-demo="paper-label">
                       {labelText}

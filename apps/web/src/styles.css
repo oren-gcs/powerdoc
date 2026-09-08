@@ -616,12 +616,6 @@ pre.ocr {
   align-items: stretch;
   gap: 2px;
 }
-.paper-row-type {
-  width: 100%;
-  color: #8a7a5a;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
 .paper-label {
   color: #1a1408;
   font-weight: 700;
