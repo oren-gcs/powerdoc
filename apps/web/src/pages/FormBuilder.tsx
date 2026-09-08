@@ -4,10 +4,70 @@ import { FormsAPI, OrgAPI } from "../api";
 import FormExit from "../components/FormExit";
 import { t } from "../i18n";
 
-const TYPES = ["text", "textarea", "number", "date", "email", "phone", "dropdown", "radio", "yesno", "signature", "heading"];
+const TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "date",
+  "email",
+  "phone",
+  "dropdown",
+  "radio",
+  "yesno",
+  "signature",
+  "heading",
+] as const;
+
+type FieldType = (typeof TYPES)[number];
+
+const CHOICE_TYPES = new Set<FieldType>(["dropdown", "radio"]);
+const PLACEHOLDER_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown"]);
+const DEFAULT_TYPES = new Set<FieldType>(["text", "textarea", "number", "email", "phone", "date", "dropdown", "radio", "yesno"]);
+const AUTO_BY_TYPE: Partial<Record<FieldType, { value: string; label: string }[]>> = {
+  date: [
+    { value: "", label: "None" },
+    { value: "today", label: "Today" },
+  ],
+};
 
 function nid() {
   return Math.random().toString(16).slice(2, 10);
+}
+
+/** Ensure every field has a unique id and stable shape for paper-row ↔ inspector sync. */
+function normalizeFields(list: any[] | null | undefined): any[] {
+  const seen = new Set<string>();
+  return (list || []).map((raw) => {
+    const f = raw && typeof raw === "object" ? raw : {};
+    let id = String(f.id || "").trim() || nid();
+    while (seen.has(id)) id = nid();
+    seen.add(id);
+    const type = (TYPES as readonly string[]).includes(String(f.type)) ? String(f.type) : "text";
+    const options = Array.isArray(f.options)
+      ? f.options.map((o: unknown) => String(o)).filter((o: string) => o.length > 0)
+      : [];
+    return normalizeField(
+      {
+        ...f,
+        id,
+        label: f.label == null ? "" : String(f.label),
+        required: !!f.required,
+        options,
+        help: f.help == null ? "" : String(f.help),
+        placeholder: f.placeholder == null ? "" : String(f.placeholder),
+        auto: f.auto == null ? "" : String(f.auto),
+        default: f.default == null ? "" : String(f.default),
+      },
+      type as FieldType
+    );
+  });
+}
+
+function parseChoices(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function parseRecipients(raw: string): string[] {
@@ -19,6 +79,51 @@ function parseRecipients(raw: string): string[] {
     seen.add(email);
     out.push(email);
   }
+  return out;
+}
+
+/** Short choices preview under the paper-row label (e.g. "A, B"). */
+function optionsSnippet(field: { type?: string; options?: string[] }): string {
+  if (!CHOICE_TYPES.has(field.type as FieldType)) return "";
+  const opts = (field.options || []).map(String).map((s) => s.trim()).filter(Boolean);
+  if (!opts.length) return "";
+  if (opts.length <= 4) return opts.join(", ");
+  return `${opts.slice(0, 4).join(", ")}…`;
+}
+
+function normalizeField(field: Record<string, unknown>, nextType: FieldType): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    ...field,
+    type: nextType,
+    help: field.help ?? "",
+    placeholder: field.placeholder ?? "",
+    auto: field.auto ?? "",
+    default: field.default ?? "",
+    options: Array.isArray(field.options) ? field.options : [],
+  };
+  if (CHOICE_TYPES.has(nextType)) {
+    const opts = (out.options as string[]).filter(Boolean);
+    out.options = opts.length ? opts : ["A", "B"];
+  } else if (nextType === "yesno") {
+    out.options = ["yes", "no"];
+  } else {
+    out.options = [];
+  }
+  if (nextType === "heading") {
+    out.required = false;
+    out.auto = "";
+    out.placeholder = "";
+    out.default = "";
+  }
+  if (nextType === "signature") {
+    out.required = true;
+    out.auto = "";
+    out.placeholder = "";
+    out.default = "";
+  }
+  if (!AUTO_BY_TYPE[nextType]) out.auto = "";
+  if (!PLACEHOLDER_TYPES.has(nextType)) out.placeholder = "";
+  if (!DEFAULT_TYPES.has(nextType)) out.default = "";
   return out;
 }
 
@@ -37,6 +142,8 @@ export default function FormBuilder() {
   const nav = useNavigate();
   const [name, setName] = useState("Untitled form");
   const [language, setLanguage] = useState(localStorage.getItem("docflow.lang") || "en");
+  const [topic, setTopic] = useState("");
+  const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState(
     "day summery to students , date automatic , rate today class, signature mandatory, email by user , did the student was in class, which topic was best explained"
   );
@@ -53,6 +160,8 @@ export default function FormBuilder() {
   const [archived, setArchived] = useState(false);
   const [submissionCount, setSubmissionCount] = useState(0);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  /** While typing Choices, keep raw text so commas are not stripped mid-edit. */
+  const [choicesDraft, setChoicesDraft] = useState<string | null>(null);
 
   const recipients = useMemo(() => parseRecipients(recipientsText), [recipientsText]);
 
@@ -61,10 +170,12 @@ export default function FormBuilder() {
       deskUsers.map((u) => [(u.email || "").toLowerCase(), (u.full_name || "").trim()])
     );
     return recipients.map((email) => {
-      const name = byEmail.get(email) || "";
-      return name ? `${name} · ${email}` : email;
+      const fullName = byEmail.get(email) || "";
+      return fullName ? `${fullName} · ${email}` : email;
     });
   }, [recipients, deskUsers]);
+
+  const selected = fields[sel];
 
   useEffect(() => {
     OrgAPI.tree()
@@ -77,12 +188,16 @@ export default function FormBuilder() {
     FormsAPI.get(Number(id)).then((f) => {
       setName(f.name);
       setLanguage(f.language);
+      setTopic(f.topic || "");
+      setDescription(f.description || "");
+      setPrompt(f.description || "");
       setFields(f.fields || []);
       setRecipientsText((f.recipients || []).join(", "));
       setFormId(f.id);
       setLocked(!!f.locked);
       setArchived(!!f.archived);
       setSubmissionCount(f.submission_count || 0);
+      setSel(0);
       if (f.share_url) setShare(f.share_url);
     });
   }, [id]);
@@ -116,28 +231,33 @@ export default function FormBuilder() {
 
   const patchSelected = (patch: Record<string, unknown>) => {
     if (frozen) return;
-    const current = fields[sel];
-    if (!current) return;
+    const cur = fields[sel];
+    if (!cur) return;
     const next = fields.slice();
-    next[sel] = { ...current, ...patch };
+    next[sel] = { ...cur, ...patch };
+    setFields(next);
+  };
+
+  const changeSelectedType = (type: FieldType) => {
+    if (frozen) return;
+    const cur = fields[sel];
+    if (!cur) return;
+    const next = fields.slice();
+    next[sel] = normalizeField(cur, type);
     setFields(next);
   };
 
   const add = (type: string) => {
     if (frozen) return;
-    setFields([
-      ...fields,
+    const field = normalizeField(
       {
         id: nid(),
-        type,
         label: type === "heading" ? "Section" : "New field",
         required: type === "signature",
-        options: type === "dropdown" || type === "radio" ? ["A", "B"] : [],
-        help: "",
-        placeholder: "",
-        auto: "",
       },
-    ]);
+      type as FieldType
+    );
+    setFields([...fields, field]);
     setSel(fields.length);
   };
 
@@ -154,9 +274,11 @@ export default function FormBuilder() {
     if (frozen) {
       throw new Error(archived ? "Form is archived" : "Form is locked after the first answer");
     }
-    const body = { name, topic: "", description: prompt, language, fields, recipients };
+    const body = { name, topic, description, language, fields, recipients };
     const f = formId ? await FormsAPI.update(formId, body) : await FormsAPI.create(body);
     setFormId(f.id);
+    setTopic(f.topic || "");
+    setDescription(f.description || "");
     setRecipientsText((f.recipients || []).join(", "));
     setLocked(!!f.locked);
     setSubmissionCount(f.submission_count || 0);
@@ -177,14 +299,17 @@ export default function FormBuilder() {
     const asked = prompt.trim();
     if (!asked || busy) return;
     setBusy(true);
-    setThread((t) => [...t, { role: "user", text: asked }]);
+    setThread((prev) => [...prev, { role: "user", text: asked }]);
     try {
       const r = await FormsAPI.compose({ prompt: asked, language, use_rag: true });
       setName(r.name);
+      if (r.topic) setTopic(r.topic);
+      if (r.description) setDescription(r.description);
+      else setDescription(asked.slice(0, 400));
       setFields(r.fields || []);
       setSel(0);
-      setThread((t) => [
-        ...t,
+      setThread((prev) => [
+        ...prev,
         {
           role: "assistant",
           text: r.reply || "I drafted the form from your chat.",
@@ -195,8 +320,8 @@ export default function FormBuilder() {
       ]);
       setMsg(r.provider === "ollama" ? `Drafted with Ollama (${r.model})` : "Drafted from chat");
     } catch (e: any) {
-      setThread((t) => [
-        ...t,
+      setThread((prev) => [
+        ...prev,
         {
           role: "assistant",
           text: `I could not draft that: ${e.message}. Rephrase, or pick a field type on the left.`,
@@ -208,7 +333,11 @@ export default function FormBuilder() {
     }
   };
 
-  const selected = fields[sel];
+  const autoChoices = selected ? AUTO_BY_TYPE[selected.type as FieldType] : undefined;
+  const showPlaceholder = selected && PLACEHOLDER_TYPES.has(selected.type as FieldType);
+  const showDefault = selected && DEFAULT_TYPES.has(selected.type as FieldType);
+  const showChoices = selected && CHOICE_TYPES.has(selected.type as FieldType);
+  const showRequired = selected && selected.type !== "heading";
 
   return (
     <div className="builder">
@@ -223,6 +352,7 @@ export default function FormBuilder() {
               onChange={(e) => setName(e.target.value)}
               disabled={frozen}
               readOnly={frozen}
+              aria-label="Form name"
             />
             {locked && (
               <p className="muted" style={{ marginTop: 4 }}>
@@ -295,7 +425,7 @@ export default function FormBuilder() {
               Unarchive
             </button>
           )}
-          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={frozen}>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={frozen} aria-label="Language">
             <option value="en">English</option>
             <option value="he">עברית</option>
             <option value="ar">العربية</option>
@@ -416,6 +546,30 @@ export default function FormBuilder() {
       )}
       <div className="card form-options" data-demo="form-recipients">
         <div className="eyebrow">{t(language, "formOptions")}</div>
+        <div className="form-options-grid">
+          <div className="field">
+            <label>Topic</label>
+            <input
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. class, invoice, vendor"
+              disabled={frozen}
+              readOnly={frozen}
+              data-demo="form-topic"
+            />
+          </div>
+          <div className="field">
+            <label>Description</label>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Shown on the live form"
+              disabled={frozen}
+              readOnly={frozen}
+              data-demo="form-description"
+            />
+          </div>
+        </div>
         <div className="field">
           <label>{t(language, "sendTo")}</label>
           <input
@@ -458,67 +612,76 @@ export default function FormBuilder() {
         <div className="card palette">
           <div className="eyebrow">Fields</div>
           {TYPES.map((ty) => (
-            <button key={ty} className="btn" onClick={() => add(ty)} disabled={frozen}>
+            <button key={ty} className="btn" onClick={() => add(ty)} disabled={frozen} data-demo={`add-${ty}`}>
               {ty}
             </button>
           ))}
         </div>
-        <div className="paper">
-          {fields.map((f, i) => (
-            <div
-              key={f.id}
-              className={`paper-row ${sel === i ? "on" : ""}`}
-              draggable={!frozen}
-              onDragStart={(e) => !frozen && e.dataTransfer.setData("text/plain", String(i))}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (frozen) return;
-                move(Number(e.dataTransfer.getData("text/plain")), i);
-              }}
-              onClick={() => setSel(i)}
-            >
-              <span className="line-no">{i + 1}</span>
-              <div className="paper-row-main">
-                <div className="mono paper-row-type">{f.type}</div>
-                <strong>{f.label}</strong>
-                {f.required && <span className="pill bad">required</span>}
+        <div className="paper" data-demo="form-paper">
+          {fields.map((f, i) => {
+            const snippet = optionsSnippet(f);
+            return (
+              <div
+                key={f.id}
+                className={`paper-row ${sel === i ? "on" : ""}`}
+                draggable={!frozen}
+                onDragStart={(e) => !frozen && e.dataTransfer.setData("text/plain", String(i))}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (frozen) return;
+                  move(Number(e.dataTransfer.getData("text/plain")), i);
+                }}
+                onClick={() => setSel(i)}
+                data-demo="paper-row"
+              >
+                <span className="line-no">{i + 1}</span>
+                <div className="paper-row-main">
+                  <div className="mono paper-row-type">{f.type}</div>
+                  <strong data-demo="paper-label">{f.label}</strong>
+                  {f.required && <span className="pill bad">required</span>}
+                  {snippet ? (
+                    <div className="muted paper-options" data-demo="paper-options">
+                      {snippet}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="paper-row-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="btn paper-icon-btn"
+                    aria-label="Move up"
+                    title="Move up"
+                    onClick={() => move(i, i - 1)}
+                    disabled={frozen || i === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="btn paper-icon-btn"
+                    aria-label="Move down"
+                    title="Move down"
+                    onClick={() => move(i, i + 1)}
+                    disabled={frozen || i === fields.length - 1}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="btn paper-icon-btn danger"
+                    data-demo="delete-field-row"
+                    aria-label={`Delete field ${f.label || i + 1}`}
+                    title={frozen ? "Form is locked" : "Delete field"}
+                    onClick={() => remove(i)}
+                    disabled={frozen}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <div className="paper-row-actions" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  className="btn paper-icon-btn"
-                  aria-label="Move up"
-                  title="Move up"
-                  onClick={() => move(i, i - 1)}
-                  disabled={frozen || i === 0}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="btn paper-icon-btn"
-                  aria-label="Move down"
-                  title="Move down"
-                  onClick={() => move(i, i + 1)}
-                  disabled={frozen || i === fields.length - 1}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  className="btn paper-icon-btn danger"
-                  data-demo="delete-field"
-                  aria-label="Delete field"
-                  title={frozen ? "Form is locked" : "Delete field"}
-                  onClick={() => remove(i)}
-                  disabled={frozen}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {!fields.length && <p className="muted">Ask the chat, or tap a field type.</p>}
         </div>
         <aside className={`card field-inspector ${selected ? "has-selection" : ""}`} data-demo="field-inspector">
@@ -533,16 +696,8 @@ export default function FormBuilder() {
                   value={selected.type}
                   disabled={frozen}
                   aria-label="Field type"
-                  onChange={(e) => {
-                    const type = e.target.value;
-                    const options =
-                      type === "dropdown" || type === "radio"
-                        ? selected.options?.length
-                          ? selected.options
-                          : ["A", "B"]
-                        : [];
-                    patchSelected({ type, options });
-                  }}
+                  data-demo="field-type"
+                  onChange={(e) => changeSelectedType(e.target.value as FieldType)}
                 >
                   {TYPES.map((ty) => (
                     <option key={ty} value={ty}>
@@ -554,28 +709,57 @@ export default function FormBuilder() {
               <div className="field">
                 <label>Label</label>
                 <input
-                  value={selected.label}
+                  value={selected.label || ""}
                   disabled={frozen}
                   readOnly={frozen}
+                  data-demo="field-label"
                   onChange={(e) => patchSelected({ label: e.target.value })}
                 />
               </div>
-              <label className="inspector-check muted">
+              {showRequired && (
+                <label className="inspector-check muted">
+                  <input
+                    type="checkbox"
+                    checked={!!selected.required}
+                    disabled={frozen}
+                    data-demo="field-required"
+                    onChange={(e) => patchSelected({ required: e.target.checked })}
+                  />{" "}
+                  Mandatory
+                </label>
+              )}
+              <div className="field">
+                <label>Help text</label>
                 <input
-                  type="checkbox"
-                  checked={!!selected.required}
+                  value={selected.help || ""}
                   disabled={frozen}
-                  onChange={(e) => patchSelected({ required: e.target.checked })}
-                />{" "}
-                Mandatory
-              </label>
-              {(selected.type === "dropdown" || selected.type === "radio") && (
+                  readOnly={frozen}
+                  placeholder="Shown under the label"
+                  data-demo="field-help"
+                  onChange={(e) => patchSelected({ help: e.target.value })}
+                />
+              </div>
+              {showPlaceholder && (
+                <div className="field">
+                  <label>Placeholder</label>
+                  <input
+                    value={selected.placeholder || ""}
+                    disabled={frozen}
+                    readOnly={frozen}
+                    placeholder="Hint inside the input"
+                    data-demo="field-placeholder"
+                    onChange={(e) => patchSelected({ placeholder: e.target.value })}
+                  />
+                </div>
+              )}
+              {showChoices && (
                 <div className="field">
                   <label>Choices (comma)</label>
                   <input
                     value={(selected.options || []).join(", ")}
                     disabled={frozen}
                     readOnly={frozen}
+                    data-demo="field-choices"
                     onChange={(e) =>
                       patchSelected({
                         options: e.target.value
@@ -585,38 +769,84 @@ export default function FormBuilder() {
                       })
                     }
                   />
+                  <div className="muted paper-options" data-demo="choices-preview">
+                    {(selected.options || []).filter(Boolean).join(" · ") || "no choices"}
+                  </div>
                 </div>
               )}
-              <div className="field">
-                <label>Help text</label>
-                <input
-                  value={selected.help || ""}
-                  disabled={frozen}
-                  readOnly={frozen}
-                  placeholder="Shown under the label"
-                  onChange={(e) => patchSelected({ help: e.target.value })}
-                />
-              </div>
-              {selected.type !== "heading" && selected.type !== "signature" && selected.type !== "yesno" && (
+              {autoChoices && (
                 <div className="field">
-                  <label>Placeholder</label>
-                  <input
-                    value={selected.placeholder || ""}
+                  <label>Auto-fill</label>
+                  <select
+                    value={selected.auto || ""}
                     disabled={frozen}
-                    readOnly={frozen}
-                    placeholder="Hint inside the input"
-                    onChange={(e) => patchSelected({ placeholder: e.target.value })}
-                  />
+                    data-demo="field-auto"
+                    onChange={(e) => patchSelected({ auto: e.target.value })}
+                  >
+                    {autoChoices.map((opt) => (
+                      <option key={opt.value || "none"} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
-              {selected.auto ? (
-                <p className="pill ok" style={{ marginTop: 8 }}>
-                  Auto: {selected.auto}
-                </p>
-              ) : null}
+              {showDefault && (
+                <div className="field">
+                  <label>Default value</label>
+                  {selected.type === "yesno" ? (
+                    <select
+                      value={selected.default || ""}
+                      disabled={frozen}
+                      data-demo="field-default"
+                      onChange={(e) => patchSelected({ default: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      <option value="yes">yes</option>
+                      <option value="no">no</option>
+                    </select>
+                  ) : showChoices ? (
+                    <select
+                      value={selected.default || ""}
+                      disabled={frozen}
+                      data-demo="field-default"
+                      onChange={(e) => patchSelected({ default: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {(selected.options || []).map((o: string) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={selected.type === "number" ? "number" : selected.type === "date" ? "date" : "text"}
+                      value={selected.default || ""}
+                      disabled={frozen}
+                      readOnly={frozen}
+                      data-demo="field-default"
+                      onChange={(e) => patchSelected({ default: e.target.value })}
+                    />
+                  )}
+                </div>
+              )}
+              <div className="row-actions" style={{ marginTop: 12 }}>
+                <button
+                  className="btn"
+                  type="button"
+                  data-demo="delete-field"
+                  disabled={frozen}
+                  onClick={() => remove(sel)}
+                >
+                  Delete field
+                </button>
+              </div>
             </>
           ) : (
-            <p className="muted">Tap a row on the paper to configure label, type, and options.</p>
+            <p className="muted" data-demo="field-inspector-empty">
+              Tap a row on the paper to configure label, type, and options.
+            </p>
           )}
         </aside>
       </div>

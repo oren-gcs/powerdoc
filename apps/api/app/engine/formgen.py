@@ -7,7 +7,16 @@ from uuid import uuid4
 from app.llm import generate, ollama_status
 
 
-def _f(type_: str, label: str, required: bool = False, options: list[str] | None = None, help_: str = "", auto: str = "") -> dict:
+def _f(
+    type_: str,
+    label: str,
+    required: bool = False,
+    options: list[str] | None = None,
+    help_: str = "",
+    auto: str = "",
+    placeholder: str = "",
+    default: str = "",
+) -> dict:
     return {
         "id": uuid4().hex[:8],
         "type": type_,
@@ -15,8 +24,9 @@ def _f(type_: str, label: str, required: bool = False, options: list[str] | None
         "required": required,
         "options": options or [],
         "help": help_,
-        "placeholder": "",
+        "placeholder": placeholder,
         "auto": auto,
+        "default": default,
     }
 
 

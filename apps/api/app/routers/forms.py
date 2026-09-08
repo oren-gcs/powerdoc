@@ -351,7 +351,20 @@ def compose(body: ComposeIn, user: User = Depends(require("operator")), db: Sess
         for name in extra[:6]:
             label = name.replace("_", " ").title()
             if not any(f["label"].lower() == label.lower() for f in built["fields"]):
-                built["fields"].insert(-1, {"id": name[:8], "type": "text", "label": label, "required": False, "options": [], "help": "From knowledge", "placeholder": "", "auto": ""})
+                built["fields"].insert(
+                    -1,
+                    {
+                        "id": name[:8],
+                        "type": "text",
+                        "label": label,
+                        "required": False,
+                        "options": [],
+                        "help": "From knowledge",
+                        "placeholder": "",
+                        "auto": "",
+                        "default": "",
+                    },
+                )
     built["context"] = chunks[:4]
     if not built.get("ollama"):
         built["ollama"] = ollama_status()

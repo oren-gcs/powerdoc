@@ -412,6 +412,22 @@ pre.ocr {
 .form-options .field {
   margin-top: 8px;
 }
+.form-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+.field-help {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+.paper-options {
+  width: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #6e5d3d;
+}
 .recipient-picks {
   margin-top: 12px;
 }
@@ -667,6 +683,7 @@ html[dir=rtl] .form-exit-arrow {
 @media (max-width: 1100px) {
   .builder-grid { grid-template-columns: 1fr; }
   .builder-grid .field-inspector { position: static; }
+  .form-options-grid { grid-template-columns: 1fr; }
   .cards-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

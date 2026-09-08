@@ -39,6 +39,7 @@ export default function FillForm() {
       const seed: Record<string, string> = {};
       for (const field of f.fields || []) {
         if (field.type === "date" && field.auto === "today") seed[field.id] = today;
+        else if (field.default != null && field.default !== "") seed[field.id] = String(field.default);
       }
       setAnswers(seed);
       document.documentElement.lang = f.language;
@@ -133,7 +134,7 @@ export default function FillForm() {
                 <label>
                   {i + 1}. {f.label} {f.required ? "*" : ""}
                 </label>
-                {f.help ? <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>{f.help}</p> : null}
+                {f.help ? <p className="muted field-help">{f.help}</p> : null}
                 {f.type === "textarea" ? (
                   <textarea
                     value={answers[f.id] || ""}
