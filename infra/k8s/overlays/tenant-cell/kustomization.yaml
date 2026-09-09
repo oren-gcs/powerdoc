@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tenant-SLUG
+
+resources:
+  - ../../base
+
+namePrefix: ""
+
+patches:
+  - target:
+      kind: Namespace
+      name: docflow
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: tenant-SLUG
+  - target:
+      kind: ConfigMap
+      name: docflow-config
+    patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: cell
+      - op: replace
+        path: /data/SEED_DEMO
+        value: "false"
+      - op: add
+        path: /data/TENANT_MODE
+        value: dedicated
+      - op: add
+        path: /data/TENANT_SLUG
+        value: SLUG
+
+# Replace SLUG before apply, or copy this overlay to overlays/tenant-<slug>/.
+# Secrets (DATABASE_URL, SECRET_KEY) must be cell-specific — never reuse across tenants.

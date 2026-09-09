@@ -54,7 +54,8 @@ flowchart TB
 ## Out of HLD
 
 - Local process/module layout → [`LLD-LOCAL.md`](./LLD-LOCAL.md)
-- SaaS multi-tenant dig-in (`tenant_id`, roles, leaks) → [`LLD-SAAS-TENANT.md`](./LLD-SAAS-TENANT.md)
+- SaaS row-level multi-tenant → [`LLD-SAAS-TENANT.md`](./LLD-SAAS-TENANT.md)
+- **Dedicated cluster + DB per tenant (compute)** → [`TENANT-CELLS.md`](./TENANT-CELLS.md)
 
 ## Related
 

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     seed_demo: bool = True
     cloud_provider: str = "local"
     docflow_service: str = "monolith"
+    tenant_mode: str = "shared"  # shared | dedicated
+    tenant_slug: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
