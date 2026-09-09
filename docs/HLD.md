@@ -53,7 +53,8 @@ flowchart TB
 
 ## Out of HLD
 
-Internal class/module layout, table schemas, request sequence, probe settings → **LLD**.
+- Local process/module layout → [`LLD-LOCAL.md`](./LLD-LOCAL.md)
+- SaaS multi-tenant dig-in (`tenant_id`, roles, leaks) → [`LLD-SAAS-TENANT.md`](./LLD-SAAS-TENANT.md)
 
 ## Related
 
