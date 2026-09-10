@@ -67,6 +67,12 @@ class ShareIn(BaseModel):
     locale: str | None = None
 
 
+class AnonymousRepliesIn(BaseModel):
+    """Open group link + anonymous fills. Only admin+ may enable."""
+
+    enabled: bool
+
+
 class SubmitIn(BaseModel):
     name: str = ""
     email: str = ""
@@ -127,12 +133,31 @@ def _clean_recipients(raw: list[str] | None) -> list[str]:
     return out
 
 
-def _definition(fields: list[dict], recipients: list[str] | None = None) -> dict:
-    return {"fields": fields or [], "recipients": _clean_recipients(recipients)}
+def _anonymous_replies_enabled(f: Form) -> bool:
+    return bool((f.definition or {}).get("allow_anonymous_replies"))
+
+
+def _definition(
+    fields: list[dict],
+    recipients: list[str] | None = None,
+    *,
+    allow_anonymous_replies: bool | None = None,
+    base: dict | None = None,
+) -> dict:
+    out = {
+        "fields": fields or [],
+        "recipients": _clean_recipients(recipients),
+        "allow_anonymous_replies": False,
+    }
+    if base:
+        out["allow_anonymous_replies"] = bool(base.get("allow_anonymous_replies"))
+    if allow_anonymous_replies is not None:
+        out["allow_anonymous_replies"] = bool(allow_anonymous_replies)
+    return out
 
 
 def _copy_definition(f: Form) -> dict:
-    """Deep-copy fields/options/recipients only — never submissions or answered data."""
+    """Deep-copy fields/options/recipients/flags only — never submissions or answered data."""
     src = f.definition or {}
     fields = []
     for field in src.get("fields") or []:
@@ -142,7 +167,11 @@ def _copy_definition(f: Form) -> dict:
         if isinstance(copied.get("options"), list):
             copied["options"] = list(copied["options"])
         fields.append(copied)
-    return _definition(fields, src.get("recipients") or [])
+    return _definition(
+        fields,
+        src.get("recipients") or [],
+        allow_anonymous_replies=bool(src.get("allow_anonymous_replies")),
+    )
 
 
 def _deactivate_form_automation(db: Session, f: Form) -> None:
@@ -293,8 +322,14 @@ def _out(f: Form, db: Session | None = None) -> dict:
     archived = f.status == "archived" or bool(getattr(f, "archived_at", None))
     recipients = _form_recipients(f)
     live = f.status == "live"
-    # Listed recipients → personal links only (no shared open token).
-    open_token = f.share_token if live and f.share_token and not recipients else None
+    allow_anon = _anonymous_replies_enabled(f)
+    # Open token when no recipients, or when admin enabled anonymous group replies.
+    # Surface as soon as minted (draft ok) so admins can copy the group link before/after publish.
+    open_token = (
+        f.share_token
+        if f.share_token and (not recipients or allow_anon) and (live or allow_anon)
+        else None
+    )
     payload = {
         "id": f.id,
         "name": f.name,
@@ -304,6 +339,7 @@ def _out(f: Form, db: Session | None = None) -> dict:
         "language": f.language,
         "fields": (f.definition or {}).get("fields") or [],
         "recipients": recipients,
+        "allow_anonymous_replies": allow_anon,
         "folder_id": f.folder_id,
         "answered_folder_id": f.answered_folder_id,
         "layer_id": f.layer_id,
@@ -490,27 +526,38 @@ def _notify_recipients(
     locale: str | None = None,
     tenant_id: int,
 ) -> tuple[list[str], list[dict]]:
-    """Create personal share tokens and in-app notifications. No real SMTP yet."""
+    from app.engine.mail import send_smtp, smtp_configured
+
     sent: list[str] = []
     links: list[dict] = []
     lang = locale or f.language
     for rec in _clean_recipients(recipients):
         share = _ensure_personal_share(db, f, rec, channel=channel, locale=lang)
         link = f"/f/{share.token}"
+        subject = f"Please complete: {f.name}"
+        body = f"Open {link} to fill and sign (personal link for {rec}). Language: {lang}."
+        smtp_ok = False
+        if channel == "email" and smtp_configured():
+            try:
+                send_smtp(to=[rec], subject=subject, body=body)
+                smtp_ok = True
+            except Exception:
+                smtp_ok = False
         target = db.query(User).filter(User.email == rec).first()
         db.add(
             Notification(
                 tenant_id=tenant_id,
                 user_id=target.id if target else None,
                 channel=channel,
-                subject=f"Please complete: {f.name}",
-                body=f"Open {link} to fill and sign (personal link for {rec}). Language: {lang}.",
+                subject=subject,
+                body=body,
+                status="sent" if smtp_ok else "recorded",
                 extra={
                     "form_id": f.id,
                     "link": link,
                     "recipient": rec,
                     "share_token": share.token,
-                    "smtp": False,
+                    "smtp": smtp_ok,
                 },
             )
         )
@@ -621,7 +668,12 @@ def update_form(form_id: int, body: FormIn, user: User = Depends(require("operat
     f.topic = body.topic
     f.description = body.description
     f.language = body.language
-    f.definition = _definition(body.fields, body.recipients)
+    # Operators may edit fields/recipients; anonymous flag is admin-only (preserve existing).
+    f.definition = _definition(
+        body.fields,
+        body.recipients,
+        base=f.definition or {},
+    )
     f.layer_id = body.layer_id
     f.folder_id = body.folder_id
     f.workflow_id = body.workflow_id
@@ -777,10 +829,12 @@ def publish(form_id: int, user: User = Depends(require("operator")), db: Session
     f.folder_id = auto_folder.id
     f.status = "live"
     recipients = _form_recipients(f)
-    if recipients:
+    allow_anon = _anonymous_replies_enabled(f)
+    if recipients and not allow_anon:
         # Listed recipients use personal tokens only — no shared open link.
         f.share_token = None
     else:
+        # Open link when no recipients, or admin enabled anonymous group replies.
         f.share_token = f.share_token or token_urlsafe(12)
     f.published_at = datetime.utcnow()
     sent, recipient_links = _notify_recipients(db, f, recipients, tenant_id=user.tenant_id)
@@ -791,6 +845,44 @@ def publish(form_id: int, user: User = Depends(require("operator")), db: Session
     out["recipient_links"] = recipient_links or out.get("recipient_links") or []
     return out
 
+
+
+
+@router.patch("/{form_id}/anonymous-replies")
+def set_anonymous_replies(
+    form_id: int,
+    body: AnonymousRepliesIn,
+    user: User = Depends(require("admin")),
+    db: Session = Depends(get_db),
+):
+    """Enable/disable open group link + anonymous fills. Admin / owner / platform_admin only."""
+    f = db.get(Form, form_id)
+    if not f or f.tenant_id != user.tenant_id:
+        raise HTTPException(404, "Form not found")
+    if f.status == "archived" or getattr(f, "archived_at", None):
+        raise HTTPException(409, "Archived forms cannot change anonymous replies.")
+    if form_is_locked(db, f):
+        raise HTTPException(409, "Locked forms cannot change anonymous replies; copy to a new form.")
+    definition = dict(f.definition or {})
+    definition["allow_anonymous_replies"] = bool(body.enabled)
+    f.definition = definition
+    if body.enabled:
+        # Keep or mint open share token so WhatsApp/group link works alongside personal invites.
+        f.share_token = f.share_token or token_urlsafe(12)
+    elif _form_recipients(f):
+        # Without anonymous mode, recipient lists do not expose an open token.
+        f.share_token = None
+    db.add(
+        Activity(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            activity_type="form_anonymous_replies",
+            details={"form_id": f.id, "enabled": bool(body.enabled)},
+        )
+    )
+    db.commit()
+    db.refresh(f)
+    return _out(f, db)
 
 @router.post("/{form_id}/share")
 def share(form_id: int, body: ShareIn, user: User = Depends(require("operator")), db: Session = Depends(get_db)):
@@ -818,8 +910,11 @@ def share(form_id: int, body: ShareIn, user: User = Depends(require("operator"))
         definition = dict(f.definition or {})
         definition["recipients"] = recipients
         f.definition = definition
-    # With a recipient list, kill any open form-level token.
-    f.share_token = None
+    # With recipients, drop open token unless admin enabled anonymous group replies.
+    if not _anonymous_replies_enabled(f):
+        f.share_token = None
+    else:
+        f.share_token = f.share_token or token_urlsafe(12)
     sent, recipient_links = _notify_recipients(
         db,
         f,
@@ -943,6 +1038,12 @@ def _apply_submission(
         # Prefer invite email; allow override only if blank body email.
         if not (body.email or "").strip():
             body.email = share.recipient
+    elif _anonymous_replies_enabled(f):
+        # Open anonymous link: identity is optional; store placeholders when blank.
+        if not (body.name or "").strip():
+            body.name = "Anonymous"
+        if not (body.email or "").strip():
+            body.email = f"anonymous+{token_urlsafe(6).lower()}@anonymous.local"
     fields = (f.definition or {}).get("fields") or []
     upload_defs = _upload_field_kinds(fields)
     missing = [
@@ -1050,8 +1151,8 @@ def _resolve_public_token(db: Session, token: str) -> tuple[Form, FormShare | No
     f = db.query(Form).filter(Form.share_token == token, Form.status == "live").first()
     if not f:
         raise HTTPException(404, "Form is not live")
-    # Open link only when the form has no recipient list.
-    if _form_recipients(f):
+    # Open link when no recipients, or admin enabled anonymous group replies.
+    if _form_recipients(f) and not _anonymous_replies_enabled(f):
         raise HTTPException(404, "Form is not live")
     return f, None
 
@@ -1076,6 +1177,7 @@ def public_get(
         if hint:
             email_match = hint == invite_email
         out["personal"] = True
+        out["identity_mode"] = "required"
         out["recipient_email"] = invite_email
         out["share_status"] = share.status
         out["already_submitted"] = already
@@ -1095,6 +1197,7 @@ def public_get(
         out["submission_id"] = None
         out["email_hint"] = None
         out["email_match"] = None
+        out["identity_mode"] = "anonymous" if _anonymous_replies_enabled(f) else "optional"
     return out
 
 

@@ -41,7 +41,6 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
             key = row.created_at.strftime("%Y-%m-%d")
             bucket[key] = bucket.get(key, 0) + 1
     daily = sorted(bucket.items())
-    # Fast heuristic only — never call generate()/Ollama here (live-demo warm path).
     digest = fast_text(
         "analytics",
         f"Docs={docs} ready={ready} failed={failed} runs={runs} classes={dict(classes)}",

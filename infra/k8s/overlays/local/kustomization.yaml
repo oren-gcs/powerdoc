@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: docflow-config
+    patch: |-
+      - op: replace
+        path: /data/CLOUD_PROVIDER
+        value: local
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: local
+      - op: replace
+        path: /data/SEED_DEMO
+        value: "true"
+      - op: replace
+        path: /data/CORS_ORIGINS
+        value: http://localhost:5173,http://localhost:3000
+
+images:
+  - name: docflow/api
+    newTag: local
+  - name: docflow/web
+    newTag: local

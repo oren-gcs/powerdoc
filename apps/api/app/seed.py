@@ -144,6 +144,7 @@ def seed_if_needed(db) -> None:
             FeatureFlag(key="rag_source_local_db", enabled=True, description="Include local database / OCR chunks in RAG"),
             FeatureFlag(key="rag_source_local_files", enabled=True, description="Include local_files connector chunks in RAG"),
             FeatureFlag(key="rag_source_ocr", enabled=True, description="Include OCR-derived knowledge chunks in RAG"),
+            FeatureFlag(key="rag_source_forms", enabled=True, description="Include form submissions and digests in RAG"),
         ]
     )
     db.commit()
@@ -273,6 +274,7 @@ def ensure_rag_flags(db) -> None:
         ("rag_source_local_db", "Include local database / OCR chunks in RAG"),
         ("rag_source_local_files", "Include local_files connector chunks in RAG"),
         ("rag_source_ocr", "Include OCR-derived knowledge chunks in RAG"),
+        ("rag_source_forms", "Include form submissions and digests in RAG"),
     ]
     existing = {f.key for f in db.query(FeatureFlag).all()}
     added = False

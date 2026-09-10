@@ -33,7 +33,6 @@ def ensure_sqlite_columns(engine) -> None:
                 conn.execute(text("ALTER TABLE form_shares ADD COLUMN status VARCHAR(24) DEFAULT 'pending'"))
             if "submission_id" not in share_cols:
                 conn.execute(text("ALTER TABLE form_shares ADD COLUMN submission_id INTEGER"))
-            # Best-effort unique index for personal tokens (ignore if already present).
             try:
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_form_shares_token ON form_shares(token)"))
             except Exception:

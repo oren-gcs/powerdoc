@@ -1,0 +1,57 @@
+version: "3.9"
+
+# One Compose project = one tenant cell (own network + volumes + ports).
+# Usage:
+#   COMPOSE_PROJECT_NAME=docflow-acme HOST_API_PORT=8101 HOST_WEB_PORT=5181 \
+#     docker compose -f docker-compose.tenant-cell.yml up --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: docflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docflow}
+      POSTGRES_DB: ${POSTGRES_DB:-docflow}
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "${HOST_API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://docflow:${POSTGRES_PASSWORD:-docflow}@postgres:5432/${POSTGRES_DB:-docflow}
+      STORAGE_PATH: /data/storage
+      SKILLS_PATH: /skills
+      SECRET_KEY: ${SECRET_KEY:-cell-local-change-me}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      DOCFLOW_SERVICE: monolith
+      TENANT_MODE: dedicated
+      TENANT_SLUG: ${TENANT_SLUG:-local}
+      CLOUD_PROVIDER: local
+      CORS_ORIGINS: http://localhost:${HOST_WEB_PORT:-5173}
+    volumes:
+      - docflow_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "${HOST_WEB_PORT:-5173}:80"
+    depends_on:
+      - api
+
+volumes:
+  pg:
+  docflow_data:

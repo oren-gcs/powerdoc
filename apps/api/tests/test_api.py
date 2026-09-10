@@ -915,3 +915,127 @@ def test_system_rag_chunks_tags_and_source_toggle(client):
     flag = client.post("/api/v1/admin/flags/rag_source_google_drive/toggle", headers=headers)
     assert flag.status_code == 200
     assert flag.json()["enabled"] is False
+
+
+def test_rag_retrieves_form_chunks_and_scopes_field_fallback(client):
+    from app.db import SessionLocal
+    from app.engine.rag import retrieve, upsert_chunk
+    from app.models import Document, ExtractedField
+
+    headers = auth_headers(client)
+    me = client.get("/api/v1/auth/me", headers=headers).json()
+    tid = me["tenant_id"]
+
+    db = SessionLocal()
+    try:
+        upsert_chunk(db, tid, "form_submission", "sub-1", "Class roster", "student roster for today's lesson attendance")
+        db.commit()
+        hits = retrieve(db, tid, "student roster lesson attendance", min_score=1, fallback_fields=False)
+        assert any(h["source"] == "form_submission" for h in hits)
+    finally:
+        db.close()
+
+    r2 = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "tenant-b@example.com",
+            "password": "Password1!",
+            "full_name": "Tenant B",
+            "organization": "Other Co",
+        },
+    )
+    assert r2.status_code == 200, r2.text
+    h2 = {"Authorization": f"Bearer {r2.json()['access_token']}"}
+    me2 = client.get("/api/v1/auth/me", headers=h2).json()
+
+    db = SessionLocal()
+    try:
+        doc = Document(
+            tenant_id=tid,
+            user_id=me["id"],
+            filename="secret.txt",
+            content_type="text/plain",
+            size_bytes=1,
+            storage_key="t1/secret",
+            checksum="abc",
+            status="ready",
+            tags=[],
+        )
+        db.add(doc)
+        db.flush()
+        db.add(ExtractedField(document_id=doc.id, name="secret_vendor", value="SHOULD_NOT_LEAK"))
+        db.commit()
+
+        leaked = retrieve(db, me2["tenant_id"], "zzzznonexistenttokenquery", min_score=99, fallback_fields=True)
+        blob = " ".join(h.get("text", "") for h in leaked)
+        assert "SHOULD_NOT_LEAK" not in blob
+    finally:
+        db.close()
+
+
+def test_anonymous_replies_admin_only_and_open_submit(client):
+    headers = auth_headers(client)  # register → owner (admin+)
+    created = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={
+            "name": "Group pulse",
+            "language": "en",
+            "fields": [{"id": "q1", "type": "text", "label": "Mood", "required": True}],
+            "recipients": ["alice@example.com"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    fid = created.json()["id"]
+    assert created.json()["allow_anonymous_replies"] is False
+    assert created.json()["share_token"] is None
+
+    # Operator cannot enable.
+    op = client.post(
+        "/api/v1/admin/users",
+        headers=headers,
+        json={"email": "ops-anon@example.com", "full_name": "Ops", "password": "Password1!", "role": "operator"},
+    )
+    assert op.status_code == 200, op.text
+    op_login = client.post("/api/v1/auth/login", json={"email": "ops-anon@example.com", "password": "Password1!"})
+    op_headers = {"Authorization": f"Bearer {op_login.json()['access_token']}"}
+    denied = client.patch(
+        f"/api/v1/forms/{fid}/anonymous-replies",
+        headers=op_headers,
+        json={"enabled": True},
+    )
+    assert denied.status_code == 403
+
+    # Owner/admin can enable → open share token even with recipients.
+    enabled = client.patch(
+        f"/api/v1/forms/{fid}/anonymous-replies",
+        headers=headers,
+        json={"enabled": True},
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["allow_anonymous_replies"] is True
+    assert enabled.json()["share_token"]
+
+    live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
+    assert live.status_code == 200, live.text
+    token = live.json()["share_token"]
+    assert token
+    assert live.json()["recipient_links"]
+
+    pub = client.get(f"/api/v1/public/forms/{token}")
+    assert pub.status_code == 200
+    assert pub.json()["personal"] is False
+    assert pub.json()["identity_mode"] == "anonymous"
+    assert pub.json()["allow_anonymous_replies"] is True
+
+    submitted = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        json={"name": "", "email": "", "answers": {"q1": "good"}, "locale": "en"},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["submission_id"]
+
+    rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
+    assert rows.status_code == 200
+    assert len(rows.json()) >= 1
+    assert rows.json()[0]["answers"]["q1"] == "good"

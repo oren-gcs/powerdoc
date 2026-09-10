@@ -11,7 +11,6 @@ from app.models import Connector, Document, OCRResult, User
 
 router = APIRouter(prefix="/api/v1/connectors", tags=["connectors"])
 
-# Demo catalogs (not live OAuth). Paths are Source / Folder / File.
 DEMO_CATALOGS: dict[str, dict] = {
     "google_drive": {
         "demo": True,
@@ -330,7 +329,6 @@ def _browse_local_db(db: Session, user: User, parts: list[str]) -> dict:
             }
         )
 
-    # Fallback demo rows when library empty
     if not files and not docs:
         if src_id == "Library":
             files = [

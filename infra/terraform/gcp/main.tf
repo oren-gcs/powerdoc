@@ -8,6 +8,15 @@ terraform {
 variable "project" { type = string }
 variable "region" { default = "us-central1" }
 variable "name" { default = "docflow" }
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+variable "database_url" {
+  type      = string
+  sensitive = true
+  description = "Full SQLAlchemy URL pointing at Cloud SQL"
+}
 
 provider "google" {
   project = var.project
@@ -31,6 +40,12 @@ resource "google_sql_database" "db" {
   instance = google_sql_database_instance.pg.name
 }
 
+resource "google_sql_user" "docflow" {
+  name     = "docflow"
+  instance = google_sql_database_instance.pg.name
+  password = var.db_password
+}
+
 resource "google_storage_bucket" "docs" {
   name     = "${var.project}-${var.name}-documents"
   location = var.region
@@ -41,7 +56,7 @@ resource "google_cloud_run_v2_service" "api" {
   location = var.region
   template {
     containers {
-      image = "gcr.io/${var.project}/docflow-api:latest"
+      image = "gcr.io/${var.project}/docflow-api:2.0.0"
       ports { container_port = 8000 }
       env {
         name  = "CLOUD_PROVIDER"
@@ -49,7 +64,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "DATABASE_URL"
-        value = "postgresql+psycopg://docflow:changeme@/${google_sql_database.db.name}?host=/cloudsql/${google_sql_database_instance.pg.connection_name}"
+        value = var.database_url
       }
     }
   }
@@ -60,7 +75,7 @@ resource "google_cloud_run_v2_service" "web" {
   location = var.region
   template {
     containers {
-      image = "gcr.io/${var.project}/docflow-web:latest"
+      image = "gcr.io/${var.project}/docflow-web:2.0.0"
       ports { container_port = 80 }
     }
   }
@@ -69,3 +84,4 @@ resource "google_cloud_run_v2_service" "web" {
 output "api_uri" { value = google_cloud_run_v2_service.api.uri }
 output "web_uri" { value = google_cloud_run_v2_service.web.uri }
 output "bucket" { value = google_storage_bucket.docs.name }
+output "sql_connection" { value = google_sql_database_instance.pg.connection_name }

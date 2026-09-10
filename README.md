@@ -1,10 +1,12 @@
 # DocFlow
 
-Production document intelligence platform — the completed successor to **Doc-Power**, with **document flow** as an executable engine rather than a message nobody consumes.
+**Production** document intelligence platform — the completed successor to **Doc-Power**, with **document flow** as an executable engine rather than a message nobody consumes.
+
+Production posture and remaining hardening: [`docs/PRODUCTION.md`](docs/PRODUCTION.md).
 
 **Desk:** http://localhost:5173  
 **API:** http://localhost:8000/docs  
-**Demo:** `oren@gcs-tech.org` / `DocFlow!2026`
+**Seed login (change in real deploys):** `oren@gcs-tech.org` / `DocFlow!2026`
 
 ## Why this exists
 
@@ -110,27 +112,23 @@ Tools: `health`, `list_documents`, `list_workflows`, `list_skills`, `analytics_s
 
 | Target | Path |
 |---|---|
-| Kubernetes | `infra/k8s/docflow.yaml` |
+| Kubernetes (Kustomize) | `infra/k8s` — overlays `local` / `aws` / `gcp` |
+| Microservices compose | `docker-compose.microservices.yml` |
 | AWS (VPC, ALB, ECS, RDS, S3) | `infra/terraform/aws` |
 | GCP (Cloud Run, Cloud SQL, GCS) | `infra/terraform/gcp` |
 
-Set `CLOUD_PROVIDER=aws|gcp` and a Postgres `DATABASE_URL` in production. Replace the RDS/Cloud SQL demo password before `terraform apply`.
+Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Set `CLOUD_PROVIDER=aws|gcp` and a Postgres `DATABASE_URL`. Pass DB passwords via TF variables / secrets manager — never commit them.
 
 ## Architecture
 
 ```
 React desk (Vite)
-    → FastAPI DocFlow API
-        → Auth / tenants / RBAC
-        → Documents + local/object storage
-        → OCR (pypdf / tesseract / text)
-        → Classifier + field extraction
-        → Workflow engine (persisted step runs)
-        → Automations
-        → Agents + skills
-        → Notifications + analytics
-    → MCP stdio server
+    → Gateway (or monolith API)
+        → identity | documents | forms | workflow | notify | analytics
+        → Postgres (persistent)
 ```
+
+Default local/CI uses `DOCFLOW_SERVICE=monolith` (all routers in one process). Production K8s runs one Deployment per service behind the gateway.
 
 ## Skills
 

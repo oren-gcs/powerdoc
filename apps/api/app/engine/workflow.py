@@ -156,7 +156,6 @@ def step_tag(db: Session, ctx: dict, config: dict) -> dict:
 
 
 def step_webhook(db: Session, ctx: dict, config: dict) -> dict:
-    # Record intended webhook without requiring outbound network in local demo.
     url = config.get("url", "")
     return {"queued": True, "url": url, "document_id": ctx["document"].id}
 

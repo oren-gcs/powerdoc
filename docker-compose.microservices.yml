@@ -1,0 +1,120 @@
+version: "3.9"
+
+x-api: &api
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: &api-env
+    DATABASE_URL: postgresql+psycopg://docflow:docflow@postgres:5432/docflow
+    STORAGE_PATH: /data/storage
+    SKILLS_PATH: /skills
+    SECRET_KEY: local-compose-secret-change-me
+    CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    SEED_DEMO: "false"
+    CLOUD_PROVIDER: local
+    IDENTITY_URL: http://identity:8000
+    DOCUMENTS_URL: http://documents:8000
+    FORMS_URL: http://forms:8000
+    WORKFLOW_URL: http://workflow:8000
+    NOTIFY_URL: http://notify:8000
+    ANALYTICS_URL: http://analytics:8000
+  volumes:
+    - docflow_data:/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 8
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: docflow
+      POSTGRES_PASSWORD: docflow
+      POSTGRES_DB: docflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identity:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: identity
+      SEED_DEMO: "true"
+    ports:
+      - "8001:8000"
+
+  documents:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: documents
+
+  forms:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: forms
+
+  workflow:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: workflow
+
+  notify:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: notify
+
+  analytics:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: analytics
+
+  gateway:
+    <<: *api
+    environment:
+      <<: *api-env
+      DOCFLOW_SERVICE: gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      identity:
+        condition: service_healthy
+      documents:
+        condition: service_healthy
+      forms:
+        condition: service_healthy
+      workflow:
+        condition: service_healthy
+      notify:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway
+
+volumes:
+  pg:
+  docflow_data:
