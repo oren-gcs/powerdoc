@@ -971,3 +971,71 @@ def test_rag_retrieves_form_chunks_and_scopes_field_fallback(client):
         assert "SHOULD_NOT_LEAK" not in blob
     finally:
         db.close()
+
+
+def test_anonymous_replies_admin_only_and_open_submit(client):
+    headers = auth_headers(client)  # register → owner (admin+)
+    created = client.post(
+        "/api/v1/forms",
+        headers=headers,
+        json={
+            "name": "Group pulse",
+            "language": "en",
+            "fields": [{"id": "q1", "type": "text", "label": "Mood", "required": True}],
+            "recipients": ["alice@example.com"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    fid = created.json()["id"]
+    assert created.json()["allow_anonymous_replies"] is False
+    assert created.json()["share_token"] is None
+
+    # Operator cannot enable.
+    op = client.post(
+        "/api/v1/admin/users",
+        headers=headers,
+        json={"email": "ops-anon@example.com", "full_name": "Ops", "password": "Password1!", "role": "operator"},
+    )
+    assert op.status_code == 200, op.text
+    op_login = client.post("/api/v1/auth/login", json={"email": "ops-anon@example.com", "password": "Password1!"})
+    op_headers = {"Authorization": f"Bearer {op_login.json()['access_token']}"}
+    denied = client.patch(
+        f"/api/v1/forms/{fid}/anonymous-replies",
+        headers=op_headers,
+        json={"enabled": True},
+    )
+    assert denied.status_code == 403
+
+    # Owner/admin can enable → open share token even with recipients.
+    enabled = client.patch(
+        f"/api/v1/forms/{fid}/anonymous-replies",
+        headers=headers,
+        json={"enabled": True},
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["allow_anonymous_replies"] is True
+    assert enabled.json()["share_token"]
+
+    live = client.post(f"/api/v1/forms/{fid}/publish", headers=headers)
+    assert live.status_code == 200, live.text
+    token = live.json()["share_token"]
+    assert token
+    assert live.json()["recipient_links"]
+
+    pub = client.get(f"/api/v1/public/forms/{token}")
+    assert pub.status_code == 200
+    assert pub.json()["personal"] is False
+    assert pub.json()["identity_mode"] == "anonymous"
+    assert pub.json()["allow_anonymous_replies"] is True
+
+    submitted = client.post(
+        f"/api/v1/public/forms/{token}/submit",
+        json={"name": "", "email": "", "answers": {"q1": "good"}, "locale": "en"},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["submission_id"]
+
+    rows = client.get(f"/api/v1/forms/{fid}/submissions", headers=headers)
+    assert rows.status_code == 200
+    assert len(rows.json()) >= 1
+    assert rows.json()[0]["answers"]["q1"] == "good"

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FormsAPI, OrgAPI } from "../api";
+import { useAuth } from "../auth";
 import FormExit from "../components/FormExit";
 import { dirFor, t } from "../i18n";
 
@@ -191,6 +192,8 @@ type DeskUser = { id: number; email: string; full_name?: string; role?: string }
 export default function FormBuilder() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
+  const canEnableAnonymous = ["admin", "owner", "platform_admin"].includes(user?.role || "");
   const [name, setName] = useState("Untitled form");
   const [language, setLanguage] = useState(localStorage.getItem("docflow.lang") || "en");
   const [topic, setTopic] = useState("");
@@ -205,6 +208,7 @@ export default function FormBuilder() {
   const [formId, setFormId] = useState<number | null>(id ? Number(id) : null);
   const [msg, setMsg] = useState("");
   const [share, setShare] = useState("");
+  const [allowAnonymous, setAllowAnonymous] = useState(false);
   const [recipientLinks, setRecipientLinks] = useState<
     { email: string; url?: string | null; token?: string | null; status?: string }[]
   >([]);
@@ -253,6 +257,7 @@ export default function FormBuilder() {
       setSel(0);
       if (f.share_url) setShare(f.share_url);
       else setShare("");
+      setAllowAnonymous(!!f.allow_anonymous_replies);
       setRecipientLinks(f.recipient_links || []);
     });
   }, [id]);
@@ -701,6 +706,11 @@ export default function FormBuilder() {
           {t(language, "openLinkOnlyNoRecipients")}: <a href={share}>{share}</a>
         </p>
       ) : null}
+      {allowAnonymous && share ? (
+        <p className="muted" data-demo="anonymous-share-hint">
+          {t(language, "anonymousOpenLink")}: <a href={share}>{share}</a>
+        </p>
+      ) : null}
       <div className="card form-options" data-demo="form-recipients">
         <div className="eyebrow">{t(language, "formOptions")}</div>
         <div className="form-options-grid">
@@ -726,6 +736,37 @@ export default function FormBuilder() {
               data-demo="form-description"
             />
           </div>
+        </div>
+        <div className="field anonymous-toggle" data-demo="anonymous-replies">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={allowAnonymous}
+              disabled={frozen || !canEnableAnonymous || !formId}
+              onChange={async (e) => {
+                if (!formId || !canEnableAnonymous) return;
+                const next = e.target.checked;
+                try {
+                  const r = await FormsAPI.setAnonymousReplies(formId, next);
+                  setAllowAnonymous(!!r.allow_anonymous_replies);
+                  if (r.share_url) setShare(r.share_url);
+                  else if (!next && recipientLinks.length) setShare("");
+                  setMsg(
+                    next ? t(language, "anonymousRepliesOn") : t(language, "anonymousRepliesOff")
+                  );
+                } catch (err: any) {
+                  setMsg(err.message || t(language, "anonymousRepliesDenied"));
+                }
+              }}
+            />
+            <span>
+              {t(language, "allowAnonymousReplies")}
+              {!canEnableAnonymous ? (
+                <span className="muted"> — {t(language, "adminOnly")}</span>
+              ) : null}
+            </span>
+          </label>
+          <p className="muted small">{t(language, "allowAnonymousRepliesHint")}</p>
         </div>
         <div className="field">
           <label>{t(language, "sendTo")}</label>

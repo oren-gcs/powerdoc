@@ -232,20 +232,32 @@ export default function FillForm() {
             {t(lang, "personalInviteFor", { email: form.recipient_email })}
           </p>
         ) : null}
-        <div className="field">
-          <label>{t(lang, "yourName")}</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <div className="field">
-          <label>{t(lang, "email")}</label>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            required
-            readOnly={!!form.personal && !!form.recipient_email}
-          />
-        </div>
+        {form.identity_mode === "anonymous" && !form.personal ? (
+          <p className="muted" data-demo="anonymous-fill">
+            {t(lang, "anonymousFillHint")}
+          </p>
+        ) : (
+          <>
+            <div className="field">
+              <label>{t(lang, "yourName")}</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required={form.identity_mode !== "anonymous"}
+              />
+            </div>
+            <div className="field">
+              <label>{t(lang, "email")}</label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                required={form.identity_mode !== "anonymous"}
+                readOnly={!!form.personal && !!form.recipient_email}
+              />
+            </div>
+          </>
+        )}
         {form.fields.map((f: any, i: number) => {
           const rawLabel = String(f.label || "").trim();
           const impliedControl =

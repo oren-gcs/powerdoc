@@ -120,6 +120,11 @@ export const FormsAPI = {
   unarchive: (id: number) => api(`/api/v1/forms/${id}/unarchive`, { method: "POST" }),
   compose: (body: object) => api("/api/v1/forms/compose", { method: "POST", body: JSON.stringify(body) }),
   publish: (id: number) => api(`/api/v1/forms/${id}/publish`, { method: "POST" }),
+  setAnonymousReplies: (id: number, enabled: boolean) =>
+    api(`/api/v1/forms/${id}/anonymous-replies`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
   share: (id: number, body: object) => api(`/api/v1/forms/${id}/share`, { method: "POST", body: JSON.stringify(body) }),
   submissions: (id: number) => api(`/api/v1/forms/${id}/submissions`),
   answered: (id: number) => api(`/api/v1/forms/${id}/answered`),
